@@ -4,7 +4,7 @@
   const { html, raw, $, $$, api, toast, confetti, fmtDate, ago, debounce, readFile, errorBox } = UI
   const V = window.VobValidation
   const app = $('#app')
-  const ICONS = { company: '🏢', contacts: '👥', tax: '🧾', bank: '🏦', documents: '📎', review: '✅' }
+  const ICONS = { company: UI.icon('building'), contacts: UI.icon('users'), tax: UI.icon('receipt'), bank: UI.icon('bank'), documents: UI.icon('clip'), review: UI.icon('send') }
   const store = {
     get t () { try { return sessionStorage.getItem('vob_t') } catch { return null } },
     set t (v) { try { sessionStorage.setItem('vob_t', v) } catch {} },
@@ -163,7 +163,7 @@
     app.innerHTML = html`
       ${S.returned ? html`<div class="banner warn fade-in" style="margin-bottom:16px"><span class="i">✏️</span><div><b>Jones needs a few changes</b><div>${S.returned.message}</div></div></div>` : ''}
       <div class="card fade-in" style="padding:16px 16px 10px;margin-bottom:16px">
-        <nav class="stepper" aria-label="Steps">${V.SECTIONS.map((s, i) => html`<button type="button" data-step="${s.key}" class="${s.key === step ? 'on' : ''} ${sectionState(s.key)}" aria-current="${s.key === step ? 'step' : 'false'}"><span class="dot">${sectionState(s.key) === 'done' && s.key !== step ? '✓' : ICONS[s.key]}</span>${s.title}</button>`)}</nav>
+        <nav class="stepper" aria-label="Steps">${V.SECTIONS.map((s, i) => html`<button type="button" data-step="${s.key}" class="${s.key === step ? 'on' : ''} ${sectionState(s.key)}" aria-current="${s.key === step ? 'step' : 'false'}"><span class="dot">${sectionState(s.key) === 'done' && s.key !== step ? UI.icon('check') : ICONS[s.key]}</span>${s.title}</button>`)}</nav>
         <div class="progress" aria-hidden="true"><i style="width:${Math.round((done / (SECTION_KEYS.length - 1)) * 100)}%"></i></div>
       </div>
       <section class="card pad-lg fade-in" id="sec">

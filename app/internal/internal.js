@@ -6,7 +6,9 @@
   const app = $('#app')
   let ME = null, DEV = false, PERSONAS = [], CFG = null
 
-  const STEP_ICON = { REQUESTER: '🙋', PURCHASING: '🛒', PROCUREMENT: '📑', BANK_CHECK: '📞', FINANCE: '💶' }
+  const STEP_ICON = { REQUESTER: UI.icon('userCheck'), PURCHASING: UI.icon('cart'), PROCUREMENT: UI.icon('clipboard'), BANK_CHECK: UI.icon('phone'), FINANCE: UI.icon('euro') }
+  const I = UI.icon
+  const bubble = (name, tone = '') => html`<span class="icon-bubble ${tone}">${I(name)}</span>`
   const EVENT_ICON = { INVITED: '✉️', VENDOR_STARTED: '✍️', VENDOR_SIGNED_IN: '🔑', SUBMITTED: '📨', CHECKS_RUN: '🔎', APPROVED: '✅', SENT_BACK: '↩️', REJECTED: '⛔', BANK_CALLBACK: '📞', SAP_SIMULATED: '🧪', CREATED: '🎉', SAP_ERROR: '🚨', SAP_RETRY: '🔁', ATTACHED: '📎', DOCUMENT_UPLOADED: '📄', EXPIRED: '⌛', CANCELLED: '🗑️', REMINDER: '⏰', ESCALATED: '📣', BANK_DATA_VIEWED: '👁️', FINANCE_DATA: '🧮', DUPLICATE_JUSTIFIED: '📝', INVITE_RESENT: '🔁', DOCUMENT_VIEWED: '👁️', PDF_DOWNLOADED: '🧾' }
   const chip = (tone, label) => html`<span class="chip tone-${tone}">${label}</span>`
   const greet = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening' }
@@ -80,32 +82,33 @@
     const colors = ['#94a3b8', '#6366f1', '#0ea5e9', '#14b8a6', '#f59e0b', '#10b981', '#ef4444', '#22c55e']
     app.innerHTML = html`
       <section class="hero"><div class="wrap">
-        <h1>${greet()}, ${first}! ${c.waitingForMe ? '☕' : '🌤️'}</h1>
+        <span class="eyebrow">${I('sparkles')} ${new Date().toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'long' })} · ${ME.roleLabels.join(' · ')}</span>
+        <h1>${greet()}, ${first}</h1>
         <p style="font-size:1.08rem">${c.waitingForMe ? html`You have <b>${c.waitingForMe}</b> request${c.waitingForMe > 1 ? 's' : ''} waiting for you.` : 'Nothing is waiting for you right now. Nice work!'} ${has('VOB_Requester') ? 'Need a new supplier? Invite them in under a minute.' : ''}</p>
-        ${has('VOB_Requester') ? html`<button class="btn btn-lg" style="background:#fff;color:var(--brand-ink);margin-top:6px" id="heroInvite">＋ Invite a vendor</button>` : ''}
+        ${has('VOB_Requester') ? html`<button class="btn btn-lg btn-white" style="margin-top:6px" id="heroInvite">${I('plus')} Invite a vendor</button>` : ''}
       </div></section>
       <div class="wrap fade-in">
         <div class="grid g5">
-          <a class="card kpi hot" href="#/requests?view=waiting"><span class="emoji">🎯</span><div class="num">${c.waitingForMe}</div><div class="lbl">Waiting for me</div></a>
-          <a class="card kpi" href="#/requests?view=open"><span class="emoji">📂</span><div class="num">${c.open}</div><div class="lbl">Open requests</div></a>
-          <a class="card kpi" href="#/requests?view=open"><span class="emoji">${c.overSla ? '🔥' : '✅'}</span><div class="num" style="color:${c.overSla ? 'var(--bad)' : 'inherit'}">${c.overSla}</div><div class="lbl">Over SLA</div></a>
-          <a class="card kpi" href="#/requests?view=created"><span class="emoji">🎉</span><div class="num">${c.createdThisMonth}</div><div class="lbl">Created this month</div></a>
-          <div class="card kpi"><span class="emoji">⏱️</span><div class="num">${c.avgDaysToCreate ?? '–'}</div><div class="lbl">Avg days to create (90 d)</div></div>
+          <a class="card kpi hot" href="#/requests?view=waiting"><span class="emoji">${I('target')}</span><div class="lbl">Waiting for me</div><div class="num">${c.waitingForMe}</div></a>
+          <a class="card kpi" href="#/requests?view=open"><span class="emoji">${I('folder')}</span><div class="lbl">Open requests</div><div class="num">${c.open}</div></a>
+          <a class="card kpi" href="#/requests?view=open"><span class="emoji" style="${c.overSla ? 'background:var(--bad-soft);color:var(--bad)' : 'background:var(--ok-soft);color:var(--ok)'}">${I(c.overSla ? 'flame' : 'checkCircle')}</span><div class="lbl">Over SLA</div><div class="num" style="color:${c.overSla ? 'var(--bad)' : 'inherit'}">${c.overSla}</div></a>
+          <a class="card kpi" href="#/requests?view=created"><span class="emoji" style="background:var(--ok-soft);color:var(--ok)">${I('sparkles')}</span><div class="lbl">Created this month</div><div class="num">${c.createdThisMonth}</div></a>
+          <div class="card kpi"><span class="emoji">${I('clock')}</span><div class="lbl">Avg days to create</div><div class="num">${c.avgDaysToCreate ?? '–'}</div></div>
         </div>
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr));margin-top:16px">
           <div class="card">
-            <div class="row between"><h2 style="margin:0">🎯 Waiting for you</h2><a href="#/requests?view=waiting" class="small">See all</a></div>
+            <div class="row between"><div class="section-title" style="margin:0">${bubble('target')}<h2 style="margin:0">Waiting for you</h2></div><a href="#/requests?view=waiting" class="small">See all</a></div>
             <div class="stack" style="margin-top:14px">${d.waiting.length ? d.waiting.map(r => rowCard(r)) : html`<div class="empty"><div class="art">🏖️</div>All clear! Nothing needs you right now.</div>`}</div>
             ${d.mine.length ? html`<h3 style="margin-top:22px">🙋 My open requests</h3><div class="stack">${d.mine.map(r => rowCard(r))}</div>` : ''}
           </div>
           <div class="stack">
             <div class="card">
-              <h2>🚦 Pipeline</h2>
+              <div class="section-title">${bubble('branch', 'info')}<h2 style="margin:0">Pipeline</h2></div>
               <div class="bar" style="margin:6px 0 14px">${d.pipeline.map((p, i) => p.count ? html`<i style="width:${(p.count / total) * 100}%;background:${colors[i % colors.length]}" title="${p.label}: ${p.count}"></i>` : '')}</div>
               <div class="pipeline">${d.pipeline.map((p, i) => html`<div class="pipe ${p.count ? 'hot' : ''}"><div class="n" style="color:${p.count ? colors[i % colors.length] : 'inherit'}">${p.count}</div><div class="l">${p.label}</div></div>`)}</div>
             </div>
             <div class="card">
-              <h2>⚡ Latest activity</h2>
+              <div class="section-title">${bubble('zap', 'pink')}<h2 style="margin:0">Latest activity</h2></div>
               <ul class="timeline" style="margin-top:12px">${d.activity.slice(0, 8).map(e => html`<li><span class="dot ${e.actorType === 'VENDOR' ? 'vendor' : ''}"></span><div class="small"><b>${EVENT_ICON[e.event] || '•'} ${e.actorName}</b> <span class="muted">${ago(e.at)}</span></div><div class="small">${e.request_ID ? html`<a href="#/requests/${e.request_ID}">${e.companyName || e.requestNumber}</a>: ` : ''}${e.message}</div></li>`)}</ul>
             </div>
           </div>
@@ -206,14 +209,14 @@
               <div class="field"><label for="rvTerms">Payment terms</label><select id="rvTerms">${d.options.paymentTerms.map(o => html`<option value="${o.code}" ${o.code === r.paymentTerms ? raw('selected') : ''}>${o.label}${o.requiresProcurement ? ' (needs Procurement)' : ''}</option>`)}</select></div>
               <div class="field"><label for="rvCur">Currency</label><select id="rvCur">${d.options.currencies.map(o => html`<option value="${o.code}" ${o.code === r.currency ? raw('selected') : ''}>${o.code} · ${o.name}</option>`)}</select></div></div></div>` : ''}
 
-            <div class="card"><div class="section-title"><span class="icon-bubble">🏢</span><h3 style="margin:0">Company</h3></div><dl class="kv">${section('company')}</dl></div>
-            <div class="card"><div class="section-title"><span class="icon-bubble">👥</span><h3 style="margin:0">Contacts</h3></div><dl class="kv">${section('contacts')}</dl></div>
-            <div class="card"><div class="section-title"><span class="icon-bubble">🧾</span><h3 style="margin:0">Tax</h3></div><dl class="kv">${data.notVatRegistered ? kv('VAT', 'Not VAT registered') : ''}${section('tax')}</dl></div>
-            <div class="card"><div class="row between"><div class="section-title" style="margin:0"><span class="icon-bubble">🏦</span><h3 style="margin:0">Bank</h3></div>${a.revealBank ? html`<button class="btn btn-sm btn-ghost" id="reveal">👁️ Show full details</button>` : d.bankRevealed ? html`<span class="pill" style="background:var(--warn-soft);color:var(--warn)">Full view logged</span>` : ''}</div>
+            <div class="card"><div class="section-title">${bubble('building')}<h3 style="margin:0">Company</h3></div><dl class="kv">${section('company')}</dl></div>
+            <div class="card"><div class="section-title">${bubble('users', 'info')}<h3 style="margin:0">Contacts</h3></div><dl class="kv">${section('contacts')}</dl></div>
+            <div class="card"><div class="section-title">${bubble('receipt', 'pink')}<h3 style="margin:0">Tax</h3></div><dl class="kv">${data.notVatRegistered ? kv('VAT', 'Not VAT registered') : ''}${section('tax')}</dl></div>
+            <div class="card"><div class="row between"><div class="section-title" style="margin:0">${bubble('bank', 'ok')}<h3 style="margin:0">Bank</h3></div>${a.revealBank ? html`<button class="btn btn-sm btn-ghost" id="reveal">${I('eye')} Show full details</button>` : d.bankRevealed ? html`<span class="pill" style="background:var(--warn-soft);color:var(--warn)">Full view logged</span>` : ''}</div>
               <dl class="kv" style="margin-top:12px">${section('bank')}${data.sortCode && V.isIbanCountry(data.country) ? kv('Sort code', V.formatSortCode(data.sortCode)) : ''}${data.bankAccountNo && V.isIbanCountry(data.country) ? kv('Account number', data.bankAccountNo) : ''}</dl></div>
           </div>
           <div class="stack">
-            <div class="card"><div class="section-title"><span class="icon-bubble">📌</span><h3 style="margin:0">Request</h3></div><dl class="kv">
+            <div class="card"><div class="section-title">${bubble('pin')}<h3 style="margin:0">Request</h3></div><dl class="kv">
               ${kv('Requested by', r.requesterName)}${kv('Why', r.businessReason)}${kv('Vendor contact', html`${r.vendorContactName}<br><span class="small muted">${r.vendorEmail}</span>`)}${kv('Company code', r.companyCode)}${kv('Created', fmtDateTime(r.createdAt))}${kv('Invite expires', ['INVITED', 'IN_PROGRESS', 'RETURNED'].includes(r.status) ? fmtDate(r.inviteExpiresAt) : '')}${kv('Declaration', r.declarationName ? `${r.declarationName}, ${fmtDate(r.declarationAt)}` : '')}
             </dl>
             <div class="row" style="margin-top:14px">
@@ -222,11 +225,11 @@
               ${a.changeEmail ? html`<button class="btn btn-line btn-sm" id="chEmail">✉️ Change email</button>` : ''}
               ${a.cancel ? html`<button class="btn btn-bad btn-sm" id="cancel">Cancel request</button>` : ''}
             </div></div>
-            <div class="card"><div class="section-title"><span class="icon-bubble">📎</span><h3 style="margin:0">Documents</h3></div>
+            <div class="card"><div class="section-title">${bubble('clip', 'info')}<h3 style="margin:0">Documents</h3></div>
               ${d.documents.length ? html`<div class="stack">${d.documents.map(doc => html`<div class="list-card" style="padding:10px"><span style="font-size:1.4rem">${doc.mimeType === 'application/pdf' ? '📄' : '🖼️'}</span><div style="flex:1;min-width:0"><b class="small">${doc.docType.replace(/_/g, ' ')}</b><div class="small muted" style="overflow:hidden;text-overflow:ellipsis">${doc.fileName}${doc.validUntil ? ` · valid until ${fmtDate(doc.validUntil)}` : ''}</div></div>${doc.scanStatus === 'CLEAN' ? html`<a class="btn btn-sm btn-ghost" target="_blank" rel="noopener" href="/api/internal/requests/${r.ID}/documents/${doc.ID}">Open</a>` : chip('warning', doc.scanStatus)}</div>`)}</div>` : html`<div class="muted small">No documents yet.</div>`}
             </div>
             ${d.bankChecks.length ? html`<div class="card"><div class="section-title"><span class="icon-bubble">📞</span><h3 style="margin:0">Bank call-backs</h3></div>${d.bankChecks.map(b => html`<div class="small" style="margin-bottom:10px">${chip(b.outcome === 'CONFIRMED' ? 'success' : 'error', b.outcome === 'CONFIRMED' ? 'Confirmed' : 'Not confirmed')} <b>${b.userName}</b> called ${b.numberCalled} (${b.numberSource.replace(/_/g, ' ').toLowerCase()}) and spoke to ${b.personSpokenTo}, ${fmtDateTime(b.calledAt)}${b.round !== r.round ? ' · earlier round' : ''}${b.notes ? html`<div class="muted">${b.notes}</div>` : ''}</div>`)}</div>` : ''}
-            <div class="card"><div class="section-title"><span class="icon-bubble">🕒</span><h3 style="margin:0">Timeline</h3></div>
+            <div class="card"><div class="section-title">${bubble('history')}<h3 style="margin:0">Timeline</h3></div>
               <ul class="timeline">${d.events.map(e => html`<li><span class="dot ${/CREATED|APPROVED|CONFIRM/.test(e.event) ? 'ok' : /ERROR|REJECT|BLOCK|LOCK/.test(e.event) ? 'bad' : /SENT_BACK|EXPIRED|REMINDER|ESCALAT/.test(e.event) ? 'warn' : e.actorType === 'VENDOR' ? 'vendor' : ''}"></span><div class="small"><b>${EVENT_ICON[e.event] || '•'} ${e.actorName}</b> <span class="muted">${fmtDateTime(e.at)}</span></div><div class="small">${e.message}</div></li>`)}</ul>
             </div>
           </div>
@@ -266,7 +269,7 @@
     const data = d.data
     const o = d.options
     return html`<div class="card" style="border:2px solid var(--warn)">
-      <div class="section-title"><span class="icon-bubble" style="background:var(--warn-soft)">📞</span><div><h3 style="margin:0">Bank details call-back</h3><div class="small muted">Phone the vendor to confirm the bank details before anyone can pay them.</div></div></div>
+      <div class="section-title">${bubble('phone', 'warn')}<div><h3 style="margin:0">Bank details call-back</h3><div class="small muted">Phone the vendor to confirm the bank details before anyone can pay them.</div></div></div>
       <div class="banner info small" style="margin-bottom:12px"><span class="i">💡</span><div>Use an <b>independent</b> number where possible (from the bank, the vendor's website or an existing record), not only the number on the form. The vendor gave: <b>${o.vendorContact}</b>, ${o.vendorPhone}.</div></div>
       ${last ? html`<div class="banner ${last.outcome === 'CONFIRMED' ? 'ok' : 'bad'} small" style="margin-bottom:12px"><span class="i">${last.outcome === 'CONFIRMED' ? '✅' : '❌'}</span><div>Last call: ${last.outcome === 'CONFIRMED' ? 'confirmed' : 'not confirmed'} by ${last.userName}. ${last.outcome === 'CONFIRMED' ? 'You can approve this step now.' : ''}</div></div>` : ''}
       <div class="small" style="margin-bottom:10px">Checking: <b class="mono">${d.bankRevealed ? V.formatIban(data.iban) : data.iban || data.bankAccountNo}</b> · BIC ${data.bic} · ${data.bankName}${!d.bankRevealed ? html` · <button class="linkish" id="reveal2">show full IBAN</button>` : ''}</div>
@@ -300,7 +303,7 @@
     const f = d.finance, r = d.request
     const wht = d.options.whtCodes.filter(w => !f.whtType || w.whtType === f.whtType)
     return html`<div class="card" style="border:2px solid var(--ok)">
-      <div class="section-title"><span class="icon-bubble" style="background:var(--ok-soft)">💶</span><div><h3 style="margin:0">Finance data & SAP check</h3><div class="small muted">Defaults come from configuration. Change them if needed, then run the SAP simulation.</div></div></div>
+      <div class="section-title">${bubble('calc', 'ok')}<div><h3 style="margin:0">Finance data & SAP check</h3><div class="small muted">Defaults come from configuration. Change them if needed, then run the SAP simulation.</div></div></div>
       <div class="form-grid">
         <div class="field"><label for="fRecon">Reconciliation account</label><input id="fRecon" value="${f.reconAccount}" inputmode="numeric"></div>
         <div class="field"><label for="fPm">Payment methods</label><input id="fPm" value="${f.paymentMethods}"></div>
@@ -343,7 +346,7 @@
 
   function devLinkModal (link) {
     const full = new URL(link, location.origin).href
-    modal(html`<h2>✉️ Invite sent</h2><p>In demo mode no real email goes out. You can open the vendor's view directly, or find the email in the test mailbox.</p><input readonly value="${full}" onclick="this.select()"><div class="row" style="margin-top:14px"><a class="btn btn-line" href="#/mailbox" data-close>Open test mailbox</a><span class="spacer"></span><a class="btn btn-primary" href="${full}" target="_blank" rel="noopener">Open as the vendor →</a></div>`)
+    modal(html`<h2>✉️ Invite sent</h2><p>In demo mode no real email goes out. You can open the vendor's view directly, or find the email in the test mailbox.</p><input readonly value="${full}"><div class="row" style="margin-top:14px"><a class="btn btn-line" href="#/mailbox" data-close>Open test mailbox</a><span class="spacer"></span><a class="btn btn-primary" href="${full}" target="_blank" rel="noopener">Open as the vendor →</a></div>`)
   }
 
   // ---------------------------------------------------------------- invite wizard
