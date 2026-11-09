@@ -1,0 +1,10 @@
+{
+  "name": "jones-vob-approuter",
+  "private": true,
+  "dependencies": {
+    "@sap/approuter": "23.4.0"
+  },
+  "scripts": {
+    "start": "node node_modules/@sap/approuter/approuter.js"
+  }
+}

@@ -1,0 +1,19 @@
+code;name;defaultCurrency;eu;sortOrder
+IE;Ireland;EUR;true;1
+GB;United Kingdom;GBP;false;2
+AT;Austria;EUR;true;10
+BE;Belgium;EUR;true;10
+DK;Denmark;DKK;true;10
+FI;Finland;EUR;true;10
+FR;France;EUR;true;10
+DE;Germany;EUR;true;10
+IT;Italy;EUR;true;10
+LU;Luxembourg;EUR;true;10
+NL;Netherlands;EUR;true;10
+NO;Norway;NOK;false;10
+PL;Poland;PLN;true;10
+PT;Portugal;EUR;true;10
+ES;Spain;EUR;true;10
+SE;Sweden;SEK;true;10
+CH;Switzerland;CHF;false;10
+US;United States;USD;false;10

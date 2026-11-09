@@ -16,8 +16,7 @@ VOB replaces the paper/PDF form **FIN-010-IE01 Vendor Account Set up Form** (H. 
 **Option 6: one SAP CAP application on SAP BTP, approvals in the app.** It was decided by the project owner on 2026-11-09 and is recorded in [`docs/decisions/ADR-001-platform-cap-on-btp.md`](docs/decisions/ADR-001-platform-cap-on-btp.md).
 
 - **Application:** SAP CAP (Node.js, plain JavaScript) on BTP Cloud Foundry, behind a standalone App Router.
-- **Vendor portal:** SAPUI5 freestyle app. Vendors sign in with an invite link plus an email one-time code. Vendors never get SAP or IAS accounts.
-- **Internal app:** SAPUI5 Fiori elements (OData V4). Staff sign in with XSUAA, trusting IAS, trusting Entra ID.
+- **Vendor portal and staff app:** custom HTML/CSS/JS in `app/`, no UI framework ([ADR-002](docs/decisions/ADR-002-custom-web-ui.md), owner wants a fun, beautiful UI). Vendors sign in with an invite link plus an email one-time code and never get SAP or IAS accounts. Staff sign in with XSUAA, trusting IAS, trusting Entra ID.
 - **Approvals:** a CAP-native state machine driven by configuration tables.
 - **ECC:** reached only through the SAP adapter, then a BTP destination, then the Cloud Connector, then ABAP package `ZVOB` (REST, wrapping `VMD_EI_API`). The ABAP uses 7.50 syntax only (ECC 6.0 EHP8).
 - **Not used:**
@@ -32,9 +31,9 @@ VOB replaces the paper/PDF form **FIN-010-IE01 Vendor Account Set up Form** (H. 
 
 ## Working model (do not change)
 
-1. **Codex builds the whole v1 end to end in one pass:** build, test, final pass. The brief is [`CODEX_BUILD_PROMPT.md`](CODEX_BUILD_PROMPT.md).
-2. Codex hands over with a final message starting `READY FOR REVIEW`, then stops.
-3. **Claude does one review and test pass**, then gives one Codex fix prompt.
+1. v1 was built by Claude on branch `build/v1` (2026-11-09) while Codex was out of usage. Remaining items are in [`docs/deviations.md`](docs/deviations.md).
+2. **Codex continues from that build**: close the deviations, polish, add Playwright + axe, keep every test green. Do not rewrite working code for style.
+3. Codex hands over with a final message starting `READY FOR REVIEW`, then stops; Claude does one review and test pass.
 4. There are no mid-build review cycles, label loops or hand-off brokers.
 
 ## Sources of truth
@@ -64,5 +63,9 @@ Questions only Jones can answer: use the default in design §13, add the questio
 
 ## Commands
 
-<!-- Codex: fill this section with the real npm scripts once they exist (demo, test, lint, build, e2e). -->
-_Not built yet._
+| Command | Does |
+|---|---|
+| `npm install` | Install pinned dependencies |
+| `npm run demo` | `cds watch` with in-memory SQLite, mock SAP, test mailbox and 14 demo requests |
+| `npm test` | Node test runner: `test/validation.test.js` (rules) and `test/journey.test.js` (full API journey) |
+| `npm run build` | `mbt build` for BTP |

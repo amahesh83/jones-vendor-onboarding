@@ -1,15 +1,110 @@
 {
   "name": "jones-vendor-onboarding",
   "version": "1.0.0",
-  "type": "module",
+  "description": "Jones Vendor Onboarding (VOB): online replacement for the FIN-010-IE01 vendor account set-up form, with approvals and automatic vendor creation in SAP ECC.",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
-    "@sap/cds": "10.2.2"
+    "@cap-js/hana": "3.1.2",
+    "@sap-cloud-sdk/connectivity": "4.10.0",
+    "@sap-cloud-sdk/http-client": "4.10.0",
+    "@sap/cds": "10.2.2",
+    "@sap/xssec": "4.16.0",
+    "pdf-lib": "1.17.1"
   },
   "devDependencies": {
-    "@cap-js/sqlite": "3.1.2"
+    "@cap-js/cds-test": "1.0.2",
+    "@cap-js/sqlite": "3.1.2",
+    "@sap/cds-dk": "10.2.1"
   },
   "scripts": {
-    "start": "cds-serve"
+    "start": "cds-serve",
+    "demo": "cds watch",
+    "watch": "cds watch",
+    "test": "node --test --test-concurrency=1",
+    "build": "mbt build -t gen --mtar vob.mtar"
   },
-  "private": true
+  "cds": {
+    "requires": {
+      "vob": {
+        "sap": "mock",
+        "mail": "local",
+        "scanner": "mock",
+        "demoData": false,
+        "jobMinutes": 15
+      },
+      "[development]": {
+        "auth": {
+          "kind": "custom",
+          "impl": "srv/auth/dev-auth.js"
+        },
+        "db": {
+          "kind": "sqlite",
+          "credentials": {
+            "url": ":memory:"
+          }
+        },
+        "vob": {
+          "demoData": true,
+          "allowFraming": true,
+          "retryDelays": [
+            0,
+            1500,
+            3000
+          ]
+        }
+      },
+      "[test]": {
+        "auth": {
+          "kind": "custom",
+          "impl": "srv/auth/dev-auth.js"
+        },
+        "db": {
+          "kind": "sqlite",
+          "credentials": {
+            "url": ":memory:"
+          }
+        },
+        "vob": {
+          "demoData": false,
+          "jobMinutes": 0,
+          "retryDelays": [
+            0,
+            10,
+            20
+          ]
+        }
+      },
+      "[production]": {
+        "auth": "xsuaa",
+        "db": "hana",
+        "vob": {
+          "sap": "http",
+          "mail": "graph",
+          "scanner": "btp"
+        },
+        "vob-ecc": {
+          "kind": "rest",
+          "credentials": {
+            "destination": "VOB_ECC",
+            "path": "/sap/zvob/v1"
+          }
+        },
+        "vob-graph": {
+          "kind": "rest",
+          "credentials": {
+            "destination": "VOB_GRAPH"
+          }
+        }
+      }
+    },
+    "server": {
+      "index": false
+    },
+    "sql": {
+      "native_hana_associations": false
+    }
+  }
 }

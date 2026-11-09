@@ -1,0 +1,15 @@
+{
+  "welcomeFile": "/index.html",
+  "authenticationMethod": "route",
+  "logout": { "logoutEndpoint": "/do/logout", "logoutPage": "/" },
+  "routes": [
+    { "source": "^/portal/(.*)$", "destination": "vob-srv", "authenticationType": "none", "csrfProtection": false },
+    { "source": "^/api/portal/(.*)$", "destination": "vob-srv", "authenticationType": "none", "csrfProtection": false },
+    { "source": "^/assets/(.*)$", "destination": "vob-srv", "authenticationType": "none" },
+    { "source": "^/index.html$", "destination": "vob-srv", "authenticationType": "none" },
+    { "source": "^/api/internal/(.*)$", "destination": "vob-srv", "authenticationType": "xsuaa", "csrfProtection": true },
+    { "source": "^/odata/(.*)$", "destination": "vob-srv", "authenticationType": "xsuaa", "csrfProtection": true },
+    { "source": "^/internal/(.*)$", "destination": "vob-srv", "authenticationType": "xsuaa" },
+    { "source": "^/(.*)$", "destination": "vob-srv", "authenticationType": "xsuaa" }
+  ]
+}

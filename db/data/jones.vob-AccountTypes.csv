@@ -1,0 +1,5 @@
+code;label;shortLabel;numberRange;subcontractor;help;question;icon;reconAccount;whtType;sortOrder
+YBIV;Material Supplier;Materials;100XXX;false;Supplies or transports material, equipment or parts to or from site only.;Do they only supply or deliver materials, equipment or parts?;box;0000000000;;1
+YBCS;Contract for Service;Contract for service;600XXX;true;An individual working through their own limited company, personally doing the work.;Is it one person working through their own limited company?;person;0000000000;RC;2
+YBSP;Supply of Personnel;Labour supply;700XXX;true;Labour-only workers via a limited company, umbrella company or agency, paid hourly, daily, weekly or a fixed sum. No materials or tools. They work under Jones supervision.;Do they supply labour only, working under Jones supervision?;people;0000000000;RC;3
+YBVE;Fully Contracted out Service;Contracted service;800XXX;true;Provides goods, materials and labour, agrees the specification, owns the quality and can profit beyond a percentage of workers' fees.;Do they provide materials and labour, and own the specification and quality?;crane;0000000000;RC;4

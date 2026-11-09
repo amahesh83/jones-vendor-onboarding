@@ -1,0 +1,7 @@
+companyCode;whtType;code;label;rate
+IE01;RC;R0;RCT 0% (placeholder);0
+IE01;RC;R2;RCT 20% (placeholder);20
+IE01;RC;R3;RCT 35% (placeholder);35
+IE01;CI;C0;CIS 0% gross (placeholder);0
+IE01;CI;C2;CIS 20% registered (placeholder);20
+IE01;CI;C3;CIS 30% unregistered (placeholder);30

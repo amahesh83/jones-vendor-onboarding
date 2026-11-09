@@ -1,27 +1,72 @@
-# Jones Vendor Onboarding
+# Jones Vendor Onboarding (VOB)
 
-Replaces the FIN-010-IE01 vendor account setup form for H. A. O'Neil Limited (Jones Engineering), company code IE01.
+Replaces the paper/PDF **FIN-010-IE01 Vendor Account Set up Form** (H. A. O'Neil Limited / Jones Engineering, company code IE01).
 
-## Status
+A Jones employee invites a vendor → the vendor opens a secure link, confirms a 6-digit email code and fills in a guided form → automatic checks (validation, duplicates in SAP and open requests) → Requester → Purchasing Manager → Procurement (30 days EOM only) → bank call-back → Financial Controller (with SAP simulation) → the vendor is created in SAP ECC automatically, and the filled FIN-010 PDF with the approval trail is attached.
 
-Repository setup and requirements only. The application, automated tests and deployment artefacts have not been built. There are no application commands to run yet.
+**Platform:** one SAP CAP (Node.js) app on SAP BTP ([ADR-001](docs/decisions/ADR-001-platform-cap-on-btp.md)); custom, colourful web UI ([ADR-002](docs/decisions/ADR-002-custom-web-ui.md)).
 
-## Agreed platform
+## Run it (demo mode)
 
-One SAP CAP application (Node.js, plain JavaScript) on SAP BTP Cloud Foundry, with a SAPUI5 vendor portal and a Fiori elements internal application. Approvals run inside CAP. ECC integration uses an adapter, a BTP destination, Cloud Connector and the ZVOB ABAP REST API.
+```bash
+npm install
+```
 
-ADR-001 fixes this architecture. BPA and a CPI implementation are outside v1. CPI may later provide a pass-through route without changing the application contract.
+```bash
+npm run demo
+```
 
-## Project documents
+Open http://localhost:4004 (in SAP Business Application Studio: Ports: Preview → 4004).
 
-- [Standing project rules](AGENTS.md)
-- [Accepted platform decision](docs/decisions/ADR-001-platform-cap-on-btp.md)
-- [Solution design](docs/01-solution-design.md)
-- [Build brief and review prompt](CODEX_BUILD_PROMPT.md)
-- [Original vendor form](reference/FIN-010-IE01-Vendor-Account-Setup-Form.pdf)
+Demo mode uses an in-memory database, a **mock SAP**, a **test mailbox** (nothing is sent) and synthetic data: 14 requests in every status. Data resets when the server restarts.
 
-## Next development step
+### Try the journey
+1. Open **I work at Jones** and pick a person (e.g. *Rachel Requester*).
+2. **＋ Invite vendor** → after sending, click **Open as the vendor**.
+3. As the vendor, click **Email me a code**. The code is in the **Test mailbox** (staff app top menu).
+4. Fill in the form, upload a PDF bank letter, submit 🎉
+5. Switch person (top right) and approve each step: Rachel → Paddy → (Priya for 30 days) → Ben (record the call-back) → Fiona (simulate in SAP, then approve).
 
-Implement the work packages in the build brief, starting with the supported Node.js runtime and CAP project foundation. Local development uses synthetic data, mock SAP and a local mailbox. BAS is optional for the local build.
+### Demo people
 
-Keep credentials, environment files and real vendor data out of Git. Preserve TLS verification on corporate networks; use NODE_EXTRA_CA_CERTS when a corporate certificate is required.
+| Person | Role |
+|---|---|
+| Rachel / Ronan Requester | Invite vendors, requester review |
+| Paddy Purchasing | Purchasing Manager (also a requester) |
+| Priya Procurement | Procurement approval for 30 days EOM |
+| Ben Bankcheck | Bank call-back |
+| Fiona Finance | Financial Controller |
+| Adam Admin | Master data admin: SAP errors, configuration |
+| Aoife Auditor | Read-only |
+
+### Mock SAP test triggers
+Company name containing `SAPFAIL-BANK` → bank unknown in SAP until *Create the bank in SAP* is ticked; `SAPFAIL-SIM` → simulation fails; `SAPDOWN` → SAP unreachable. VAT `IE6388047V` matches existing SAP vendor 100001 (duplicate demo).
+
+## Scripts
+
+| Command | Does |
+|---|---|
+| `npm run demo` | Start with live reload and demo data |
+| `npm test` | Unit + API journey tests (Node test runner) |
+| `npm start` | Start without reload |
+| `npm run build` | Build the BTP MTA archive (needs `mbt`) |
+
+## Layout
+
+```
+app/            web UI: index.html, portal/ (vendors), internal/ (staff), assets/
+srv/lib/        business logic: requests, workflow, validation, portal-auth, pdf, files, mail/, sap/
+srv/routes/     JSON APIs: /api/portal, /api/internal, /api/dev (demo only)
+srv/auth/       dev persona login (refuses to run in production)
+db/             data model + configuration seed data
+abap/           ZVOB REST API for ECC (draft, see docs/abap-install.md)
+test/           automated tests
+```
+
+## Docs
+- [Solution design](docs/01-solution-design.md) · [ADR-001](docs/decisions/ADR-001-platform-cap-on-btp.md) · [ADR-002](docs/decisions/ADR-002-custom-web-ui.md)
+- [Deployment runbook](docs/deployment-runbook.md) · [ABAP install](docs/abap-install.md) · [Deviations](docs/deviations.md)
+
+## Troubleshooting
+- **npm install fails with a certificate error** (Zscaler): set `NODE_EXTRA_CA_CERTS` to the corporate root CA file. Never disable TLS checks.
+- **"Unauthorized" on the BAS preview of /odata**: expected. Use the app's person switcher; the OData service needs the Auditor, Admin or FC role.
