@@ -1,0 +1,14 @@
+node_modules/
+.outbox/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+default-env.json
+.env*
+gen/
+mta_archives/
+test-results/
+playwright-report/
+coverage/
+.DS_Store
+Thumbs.db
