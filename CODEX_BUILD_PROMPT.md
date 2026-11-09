@@ -75,9 +75,15 @@ FIXED DECISIONS (do not re-open; they implement ADR-001)
 
 WORK PACKAGES (build in this order, committing after each)
 WP0 Repo
-  - git init; first commit on `main` = the existing AGENTS.md + docs/ (including docs/decisions/) + reference/ +
-    this prompt file, unchanged. Then branch `build/v1`.
-  - .gitignore (node_modules, .outbox, *.sqlite, default-env.json, .env*, gen/, mta_archives/, test-results/).
+  - The repository ALREADY EXISTS. Do NOT run `git init`, do NOT create a GitHub repo, and do NOT rewrite history.
+    - It is the private GitHub repo amahesh83/jones-vendor-onboarding, cloned in this folder with `origin` set.
+    - `main` holds the docs, reference PDF, AGENTS.md, README.md and .gitignore. It was set up in PR #1, which is
+      merged and covered repository setup only.
+  - Start from the latest `main` and build on branch `build/v1`, brought up to date first. In PowerShell:
+    `git switch main; git pull; git switch build/v1; git merge --ff-only origin/main`
+    If the fast-forward fails, recreate the branch from main with `git switch -C build/v1 origin/main`.
+  - .gitignore already exists. Extend it only if needed; keep the existing entries.
+  - README.md already exists and says "repository setup only". Rewrite it in WP12 once the app is built.
   - AGENTS.md already exists. Keep its "Platform decision" and "Working model" sections exactly as they are.
     Fill in its "Commands" section with the real npm scripts once they exist.
   - Pin exact dependency versions (commit package-lock.json). Set `engines.node` to an LTS version supported by
@@ -173,7 +179,8 @@ WP11 Deployment artefacts
     authenticated), destination names documented, production profile config.
   - GitHub Actions CI: install, lint, unit + integration tests, Playwright (headless), mbt build.
 WP12 Docs (accurate to what you built)
-  - README.md (what it is, one-command demo, personas, scripts, troubleshooting).
+  - README.md: replace the setup-only Status and Next step sections. Cover what it is, the one-command demo,
+    personas, scripts and troubleshooting.
   - docs/architecture.md (as built), docs/field-mapping.md (PDF field → app → SAP, final), docs/deployment-runbook.md
     (BTP subaccount, entitlements, IAS/Entra trust, role collections, destinations, Cloud Connector, ABAP install,
     go-live checklist), docs/user-guide-vendor.md, docs/user-guide-internal.md, docs/test-evidence.md,
@@ -218,9 +225,10 @@ FINAL PASS (do this after everything is green)
    - Approvals run only through the CAP state machine.
    - ECC is reached only through the SAP adapter and a destination.
    - Write the result in docs/test-evidence.md.
-6. Commit, then if `gh auth status` succeeds: create PRIVATE repo amahesh83/jones-vendor-onboarding, push `main` and
-   `build/v1`, and open ONE draft PR "VOB v1: end-to-end build" from build/v1 to main. Never push secrets.
-   If gh isn't authenticated, leave everything local and say so.
+6. Commit, then push `build/v1` to origin. Do not push to `main` and do not merge.
+   - If `gh auth status` succeeds, open ONE new draft PR "VOB v1: end-to-end build" from build/v1 to main.
+   - PR #1 was setup only and is already merged, so this is a new PR. Never push secrets.
+   - If the push or gh fails, leave the commits local and say so in the hand-over.
 
 GUARDRAILS
 - No real SAP connections, no real credentials, no real emails sent, no real vendor or personal data.
