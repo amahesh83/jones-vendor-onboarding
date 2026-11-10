@@ -2,7 +2,7 @@
 
 ## Claude Code completion pass (2026-11-10)
 
-All runs were local on Windows 11 with Node 24.22.2, on the code committed with this file:
+Local runs were on Windows 11 with Node 24.22.2; the last row is the authoritative CI run:
 
 | Check | Result |
 |---|---|
@@ -14,7 +14,7 @@ All runs were local on Windows 11 with Node 24.22.2, on the code committed with 
 | `npm run build:cap` | Passed. `gen/db` has table data only for Countries/Currencies/WithholdingCodes; `gen/srv/srv/seed` and the staged UI are present |
 | `npm run package:abap` | Passed (`gen/zvob-abapgit.zip`) |
 | `npm run e2e`, full suite | **All 15 journeys passed**, plus the 375-light and 1280-light screen traversals. The two dark traversals failed with `ERR_NETWORK_IO_SUSPENDED` and timeouts while another project's Playwright suite was loading the same laptop. Re-run: 1280-dark **passed**; for 375-dark see the next line |
-| 375-dark screen traversal re-run | Recorded in PR #2 once the machine is no longer shared. GitHub CI on the pushed commit is the authoritative full run |
+| **GitHub CI on `1cceb73`**, [run 42857157309](https://github.com/amahesh83/jones-vendor-onboarding/actions/runs/42857157309) (authoritative, clean Linux) | **All green:** lint, ABAP parser (0 issues/14 files), **33/33 Node tests**, **19/19 Playwright tests (7.3 min) including all four screen traversals**, `build:cap`, `npm run build` (`gen/vob.mtar` generated), `package:abap`. Artifact `vob-test-evidence` ID 13783278524 |
 
 The earlier flaky failures (axe contrast in journeys 04/05 and `ECONNRESET` in 375-dark) were traced to real causes and fixed:
 - axe ran while entrance animations were still fading in; it now waits for them to finish.

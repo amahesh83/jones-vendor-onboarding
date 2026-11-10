@@ -1,6 +1,6 @@
 # Acceptance mapping and evidence
 
-Evidence for the Claude Code completion pass on 2026-11-10, on top of implementation checkpoint `a456354` (CI [run #6](https://github.com/amahesh83/jones-vendor-onboarding/actions/runs/42808148930), all green). Run details and their limits are in [test-evidence/README.md](test-evidence/README.md).
+Evidence for the Claude Code completion pass on 2026-11-10. Final code `1cceb73` passed CI [run 42857157309](https://github.com/amahesh83/jones-vendor-onboarding/actions/runs/42857157309): 33/33 Node tests, 19/19 Playwright tests, lint, ABAP parser, CAP build, MTA archive and abapGit packaging. The earlier checkpoint `a456354` passed [run #6](https://github.com/amahesh83/jones-vendor-onboarding/actions/runs/42808148930). Run details and their limits are in [test-evidence/README.md](test-evidence/README.md).
 
 **Key:** ✅ tested and passing · 🟡 partly tested (the gap is stated) · ⛔ not testable here (needs Jones SAP/BTP or Jones input)
 
