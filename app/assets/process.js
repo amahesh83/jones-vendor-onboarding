@@ -11,10 +11,14 @@ document.getElementById('themeBtn').addEventListener('click', UI.toggleTheme)
   }
   try {
     const request = new URLSearchParams(location.search).get('request')
-    let data = await api('/api/process')
+    let data
     if (request) {
       const d = await api('/api/internal/requests/' + encodeURIComponent(request))
       data = { snapshot: true, routes: [{ ...d.route, steps: d.steps }] }
+    } else {
+      // The vendor cookie is deliberately scoped to /api/portal; keep it there.
+      try { data = await api('/api/portal/process') } catch {}
+      if (!data?.snapshot) data = await api('/api/process')
     }
     $('.process-flow').innerHTML = html`
       <li class="card"><h2>Invitation and supplier details</h2><p>A Jones employee invites the vendor. The vendor confirms an email code, completes company, contact, tax and bank details, uploads documents and submits.</p></li>

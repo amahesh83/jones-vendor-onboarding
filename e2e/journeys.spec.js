@@ -58,7 +58,7 @@ test('02 IE subcontractor: RCT and mandatory documents', async ({ page }) => {
 })
 test('03 procurement appears for 30 EOM and is absent for 60 EOM', async ({ page }) => {
   const r = await prepared(page, { paymentTerms: '30EOM' })
-  await approve(page, r.ID, 'rachel'); 
+  await approve(page, r.ID, 'rachel');
   await detail(page, r.ID, 'priya'); await expect(page.locator('#approve')).toBeVisible()
   const d = await (await page.request.get(`/api/internal/requests/${r.ID}`)).json()
   expect(d.request.status).toBe('PENDING_PROCUREMENT')
@@ -92,7 +92,7 @@ test('05 sent back bank change restarts approvals and requires new callback', as
   await detail(page, r.ID, 'rachel')
   const d = await (await page.request.get(`/api/internal/requests/${r.ID}`)).json()
   expect(d.request.status).toBe('PENDING_REQUESTER'); expect(d.bankChanged).toBe(true)
-  await approve(page, r.ID, 'rachel'); 
+  await approve(page, r.ID, 'rachel');
   await detail(page, r.ID, 'ben'); await expect(page.locator('#approve')).toBeDisabled()
 })
 test('06 exact SAP VAT duplicate blocks finance until justified', async ({ page }) => {
@@ -104,7 +104,7 @@ test('06 exact SAP VAT duplicate blocks finance until justified', async ({ page 
   const m = (await mails(page, r.ID)).find(m => m.template === 'sentBack')
   await openVendor(page, { ...r, devLink: m.actionUrl })
   await page.locator('[data-step="tax"]').click(); await page.locator('#f_vatNumber').fill('IE6388047V'); await page.locator('#next').click(); await submit(page)
-  await approve(page, r.ID, 'rachel'); 
+  await approve(page, r.ID, 'rachel');
   await detail(page, r.ID, 'ben'); await page.locator('#bNum').fill('+35315550123'); await page.locator('[data-out="CONFIRMED"]').click(); await page.locator('#bSave').click(); await page.locator('#approve').click()
   await detail(page, r.ID, 'fiona'); await page.locator('#fSim').click()
   await expect(page.locator('#approve')).toBeDisabled()
@@ -257,5 +257,8 @@ test('15 route editor, tester and Finance-owned call-back journey', async ({ pag
     await save(cfg.approvalRoutes)
     const d = await (await page.request.get(`/api/internal/requests/${r.ID}`)).json()
     expect(d.route.name).toBe('Browser low-risk Finance')
+    await page.goto('/how-it-works.html')
+    await expect(page.locator('.process-flow')).toContainText('Your saved route')
+    await expect(page.locator('.process-flow')).toContainText('Route: Requester → Finance')
   } finally { await save(cfg.approvalRoutes) }
 })

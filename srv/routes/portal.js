@@ -45,6 +45,12 @@ router.get('/me', handle(async req => {
   return R.vendorView(s.request)
 }))
 
+router.get('/process', handle(async req => {
+  const s = await withSession(req, false)
+  if (!s.request.routeSnapshot) return { snapshot: false, routes: [] }
+  return { snapshot: true, routes: [require('../lib/workflow').routeFor(s.request)] }
+}))
+
 router.put('/sections/:section', handle(async req => {
   const s = await withSession(req, true)
   return R.saveSection(s.request, req.params.section, req.body?.data || {})

@@ -292,9 +292,12 @@ describe('vendor onboarding journey', () => {
       assert.equal(d.route.name, 'Low-risk Finance')
       assert.equal(d.request.round, 2)
       assert.match(d.allowed.approveBlocker, /call-back/)
-      const process = (await GET('/api/process', session.h)).data
+      const process = (await GET('/api/portal/process', session.h)).data
       assert.equal(process.snapshot, true)
       assert.equal(process.routes[0].bankCheckMode, 'IN_FINANCE')
+      const vendorView = (await GET('/api/portal/me', session.h)).data
+      assert.equal(vendorView.nextReview.role, 'Finance')
+      assert.equal(vendorView.nextReview.days, process.routes[0].steps[0].reminderDays)
       await POST(`/api/internal/requests/${r.ID}/bank-verification`, evidence, as('fiona'))
       await POST(`/api/internal/requests/${r.ID}/simulate`, {}, as('fiona'))
       await POST(`/api/internal/requests/${r.ID}/approve`, {}, as('fiona'))

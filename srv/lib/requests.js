@@ -186,6 +186,7 @@ function vendorStatus (r) {
 /** What the vendor portal shows: their own data only, bank masked once submitted. Never internal notes. */
 async function vendorView (r) {
   const cfg = await config()
+  const nextReview = W.routeStep(r)
   const ctx = ctxFor(r, cfg)
   const at = byCode(cfg.accountTypes, r.accountType)
   const st = vendorStatus(r)
@@ -214,6 +215,7 @@ async function vendorView (r) {
     returned: r.status === 'RETURNED' ? { message: r.returnMessage, sections: (r.returnSections || '').split(',').filter(Boolean) } : null,
     vendorNumber: r.status === 'CREATED' ? r.sapVendorNumber : null,
     reviewStages: r.routeSnapshot ? W.routeFor(r).steps.map(s => s.short) : [],
+    nextReview: nextReview ? { role: nextReview.short, days: nextReview.reminderDays || (r.status === 'PENDING_BANK_CHECK' ? 1 : 2) } : null,
     bankCheckMode: r.routeSnapshot ? W.routeFor(r).bankCheckMode : 'SEPARATE',
     submittedAt: r.submittedAt,
     lastSavedAt: r.lastSavedAt,
