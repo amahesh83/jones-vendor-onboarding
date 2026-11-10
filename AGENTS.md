@@ -17,7 +17,7 @@ VOB replaces the paper/PDF form **FIN-010-IE01 Vendor Account Set up Form** (H. 
 
 - **Application:** SAP CAP (Node.js, plain JavaScript) on BTP Cloud Foundry, behind a standalone App Router.
 - **Vendor portal and staff app:** custom HTML/CSS/JS in `app/`, no UI framework ([ADR-002](docs/decisions/ADR-002-custom-web-ui.md), owner wants a fun, beautiful UI). Vendors sign in with an invite link plus an email one-time code and never get SAP or IAS accounts. Staff sign in with XSUAA, trusting IAS, trusting Entra ID.
-- **Approvals:** a CAP-native state machine driven by configuration tables.
+- **Approvals:** a CAP-native state machine driven by configuration tables. [ADR-003](docs/decisions/ADR-003-configurable-approval-routes.md) replaces the fixed chain: first-match configurable routes, requester review on by default, saved submission snapshots, separate bank check by default or explicitly within Finance.
 - **ECC:** reached only through the SAP adapter, then a BTP destination, then the Cloud Connector, then ABAP package `ZVOB` (REST, wrapping `VMD_EI_API`). The ABAP uses 7.50 syntax only (ECC 6.0 EHP8).
 - **Not used:**
   - SAP Build Process Automation or Build Apps (Option 6b is not in v1);
@@ -66,6 +66,12 @@ Questions only Jones can answer: use the default in design §13, add the questio
 | Command | Does |
 |---|---|
 | `npm install` | Install pinned dependencies |
-| `npm run demo` | `cds watch` with in-memory SQLite, mock SAP, test mailbox and 14 demo requests |
-| `npm test` | Node test runner: `test/validation.test.js` (rules) and `test/journey.test.js` (full API journey) |
+| `npm run demo` | Stable CAP server with in-memory SQLite, mock SAP, test mailbox and 14 demo requests |
+| `npm run watch` | CAP development watch mode |
+| `npm test` | Node test runner: validation, API journeys, queue restart recovery and ABAP archive integrity |
+| `npm run e2e` | Playwright acceptance tests and axe/screenshot checks at 375/1280 px in light/dark |
+| `npm run lint` | ESLint, zero warnings |
+| `npm run lint:abap` | ABAP parser check (not ECC semantic compilation) |
+| `npm run package:abap` | Offline abapGit ZIP under gen/ |
+| `npm run build:cap` | Compile production HANA/service content and stage plain app assets |
 | `npm run build` | `mbt build` for BTP |

@@ -59,25 +59,26 @@ const T = {
     text: `Thanks. We have your details for ${d.companyName} (ref ${d.ref}). We'll email you when your account is ready.`,
   }),
   submittedRequester: d => ({
-    subject: `${d.companyName} has submitted their details. Your review is next`,
+    subject: `${d.companyName} has submitted their details`,
     html: layout({
-      title: 'Ready for your review',
+      title: 'Supplier details submitted',
       body: p(`<b>${esc(d.companyName)}</b> (${esc(d.ref)}) has submitted their supplier details.`) +
-        p('Please check the account type, payment terms and currency, then approve or send it back.'),
+        p(`Next: ${esc(d.nextStepLabel || 'requester review')}. Route: ${esc(d.routeSummary || '')}`),
       button: { label: 'Review the request', url: d.link },
     }),
-    text: `${d.companyName} (${d.ref}) has submitted. Please review: ${d.link}`,
+    text: `${d.companyName} (${d.ref}) has submitted. Next: ${d.nextStepLabel || 'requester review'}. Route: ${d.routeSummary || ''}. ${d.link}`,
   }),
   task: d => ({
     subject: `${d.prefix || ''}Vendor ${d.companyName} is waiting for your ${d.stepLabel.toLowerCase()}`,
     html: layout({
       title: d.prefix ? d.prefix.replace(/[:\s]+$/, '') : 'Waiting for you',
       body: p(`<b>${esc(d.companyName)}</b> (${esc(d.ref)}) is waiting for: <b>${esc(d.stepLabel)}</b>.`) +
+        (d.routeSummary ? p(`Route: ${esc(d.routeSummary)}`) : '') +
         (d.waitingDays ? p(`It has been waiting ${esc(d.waitingDays)} working day(s).`) : '') +
         p('Anyone in your team can pick it up.'),
       button: { label: 'Open the request', url: d.link },
     }),
-    text: `${d.prefix || ''}${d.companyName} (${d.ref}) is waiting for ${d.stepLabel}: ${d.link}`,
+    text: `${d.prefix || ''}${d.companyName} (${d.ref}) is waiting for ${d.stepLabel}. Route: ${d.routeSummary || ''}. ${d.link}`,
   }),
   sentBack: d => ({
     subject: `A few changes needed on your supplier details (${d.ref})`,

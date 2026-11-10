@@ -1,0 +1,4 @@
+ID;priority;name;active;accountTypes;paymentTerms;companyCode;country;steps;bankCheckMode
+SUBCONTRACT;10;Sub-contractors;true;YBCS,YBSP,YBVE;;;;PROCUREMENT,BANK_CHECK,FINANCE;SEPARATE
+SHORT_TERMS;20;Short payment terms;true;;30EOM;;;PROCUREMENT,BANK_CHECK,FINANCE;SEPARATE
+DEFAULT;99;Default;true;;;;;BANK_CHECK,FINANCE;SEPARATE

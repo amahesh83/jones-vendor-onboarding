@@ -119,12 +119,15 @@ async function stepAge (id, days) {
 }
 
 async function toFinance (id) {
-  await approve('rachel', id).catch(() => approve('ronan', id))
-  await approve('paddy', id)
-  const r = await tx(() => R.load(id))
-  if (r.status === 'PENDING_PROCUREMENT') await approve('priya', id)
-  await bankCheck(id)
-  await approve('ben', id)
+  for (let count = 0; count < 6; count++) {
+    const r = await tx(() => R.load(id))
+    if (r.status === 'PENDING_FINANCE') return
+    if (r.status === 'PENDING_REQUESTER') await approve(r.requesterId.split('.')[0], id)
+    else if (r.status === 'PENDING_PURCHASING') await approve('paddy', id)
+    else if (r.status === 'PENDING_PROCUREMENT') await approve('priya', id)
+    else if (r.status === 'PENDING_BANK_CHECK') { await bankCheck(id); await approve('ben', id) }
+  }
+  throw new Error('Demo route did not reach Finance')
 }
 
 async function seed () {
@@ -148,7 +151,7 @@ async function seed () {
   await fill(shannon.ID, VENDORS.shannon); await docs(shannon.ID, SUB); await submit(shannon.ID, 'Siobhán Ryan')
   await age(shannon.ID, 3); await stepAge(shannon.ID, 1)
 
-  // 4. PENDING_PURCHASING
+  // 4. PENDING_PROCUREMENT: sub-contractor route (ADR-003)
   const boyne = await invite('ronan', { company: 'Boyne Electrical Contractors Ltd', contact: 'Ciarán Byrne', email: 'ciaran@boyne-electrical.test', accountType: 'YBCS', reason: 'Electrical commissioning on the Drogheda site' })
   await fill(boyne.ID, VENDORS.boyne); await docs(boyne.ID, SUB); await submit(boyne.ID, 'Ciarán Byrne')
   await approve('ronan', boyne.ID); await age(boyne.ID, 6); await stepAge(boyne.ID, 6)
@@ -156,12 +159,12 @@ async function seed () {
   // 5. PENDING_PROCUREMENT (30 days EOM)
   const corrib = await invite('rachel', { company: 'Corrib Concrete Products Ltd', contact: 'Aisling Walsh', email: 'aisling@corrib-concrete.test', accountType: 'YBIV', terms: '30EOM', reason: 'Precast concrete for the Galway campus' })
   await fill(corrib.ID, VENDORS.corrib); await docs(corrib.ID, ['BANK_LETTER']); await submit(corrib.ID, 'Aisling Walsh')
-  await approve('rachel', corrib.ID); await approve('paddy', corrib.ID); await age(corrib.ID, 4); await stepAge(corrib.ID, 2)
+  await approve('rachel', corrib.ID); await age(corrib.ID, 4); await stepAge(corrib.ID, 2)
 
   // 6. PENDING_BANK_CHECK: UK sub-contractor, GBP
   const mourne = await invite('ronan', { company: 'Mourne Steel Fixers Ltd', contact: 'Gareth Maguire', email: 'gareth@mourne-steel.test', accountType: 'YBSP', currency: 'GBP', country: 'GB', reason: 'Steel fixing crew for the Belfast office fit-out' })
   await fill(mourne.ID, VENDORS.mourne); await docs(mourne.ID, ['BANK_LETTER', 'INSURANCE', 'SAFETY', 'SUBCONTRACT']); await submit(mourne.ID, 'Gareth Maguire')
-  await approve('ronan', mourne.ID); await approve('paddy', mourne.ID); await age(mourne.ID, 5); await stepAge(mourne.ID, 1)
+  await approve('ronan', mourne.ID); await approve('priya', mourne.ID); await age(mourne.ID, 5); await stepAge(mourne.ID, 1)
 
   // 7. PENDING_FINANCE: ready for simulation and final approval
   const wicklow = await invite('rachel', { company: 'Wicklow Tools & Hire Ltd', contact: 'Niamh Doyle', email: 'niamh@wicklow-hire.test', accountType: 'YBIV', reason: 'Plant hire for the Wicklow road scheme' })
@@ -177,7 +180,7 @@ async function seed () {
   const barrow = await invite('rachel', { company: 'Barrow Insulation Ltd', contact: 'Eoin Nolan', email: 'eoin@barrow-insulation.test', accountType: 'YBIV', reason: 'Insulation for the Carlow school' })
   await fill(barrow.ID, VENDORS.barrow); await docs(barrow.ID, ['BANK_LETTER']); await submit(barrow.ID, 'Eoin Nolan')
   await approve('rachel', barrow.ID)
-  await tx(() => R.decide(P.paddy, barrow.ID, 'sendBack', { message: 'The bank letter is a screenshot of online banking. Please upload a letter on the bank\'s headed paper.', sections: ['documents'] }))
+  await tx(() => R.decide(P.ben, barrow.ID, 'sendBack', { message: 'The bank letter is a screenshot of online banking. Please upload a letter on the bank\'s headed paper.', sections: ['documents'] }))
   await age(barrow.ID, 9)
 
   // 10. SAP_ERROR: the bank doesn't exist in SAP yet
@@ -202,7 +205,7 @@ async function seed () {
   const moy = await invite('ronan', { company: 'Moy Cleaning Services Ltd', contact: 'Sean Gallagher', email: 'sean@moy-cleaning.test', accountType: 'YBIV', reason: 'Site cleaning' })
   await fill(moy.ID, VENDORS.moy); await docs(moy.ID, ['BANK_LETTER']); await submit(moy.ID, 'Sean Gallagher')
   await approve('ronan', moy.ID)
-  await tx(() => R.decide(P.paddy, moy.ID, 'reject', { reason: 'We already have a framework cleaning contractor for the region.' }))
+  await tx(() => R.decide(P.ben, moy.ID, 'reject', { reason: 'We already have a framework cleaning contractor for the region.' }))
 
   // 14. EXPIRED
   const exp = await invite('rachel', { company: 'Blackwater Hauliers Ltd', contact: 'Pat Fitz', email: 'pat@blackwater-haulage.test', accountType: 'YBIV', reason: 'Haulage' })
@@ -210,7 +213,7 @@ async function seed () {
   await tx(() => R.runJobs())
   await age(exp.ID, 35)
 
-  LOG.info('Demo data ready: 14 requests across every status. Open http://localhost:4004')
+  LOG.info('Demo data ready: 14 requests across the seeded approval routes. Open http://localhost:4004')
 }
 
 module.exports = { seed, samplePdf }

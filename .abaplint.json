@@ -1,0 +1,16 @@
+{
+  "global": {
+    "files": "/abap/src/**/*.*",
+    "skipGeneratedGatewayClasses": false
+  },
+  "syntax": {
+    "version": {
+      "release": "v750",
+      "language": "Normal"
+    },
+    "errorNamespace": "^(Z|Y|LCL_|LTC_)"
+  },
+  "rules": {
+    "parser_error": true
+  }
+}

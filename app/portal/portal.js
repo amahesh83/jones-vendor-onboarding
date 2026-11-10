@@ -1,7 +1,7 @@
 /* Vendor portal: link → email code → guided form → submit → status. */
 (function () {
   'use strict'
-  const { html, raw, $, $$, api, toast, confetti, fmtDate, ago, debounce, readFile, errorBox } = UI
+  const { html, raw, $, $$, api, toast, confetti, fmtDate, debounce, readFile, errorBox } = UI
   const V = window.VobValidation
   const app = $('#app')
   const ICONS = { company: UI.icon('building'), contacts: UI.icon('users'), tax: UI.icon('receipt'), bank: UI.icon('bank'), documents: UI.icon('clip'), review: UI.icon('send') }
@@ -16,6 +16,7 @@
   let errors = {}
   let warnings = {}
   let bankUnlocked = false
+  let DEMO = false
 
   $('#themeBtn').onclick = UI.toggleTheme
 
@@ -28,6 +29,7 @@
 
   // ---------------------------------------------------------------- boot
   async function boot () {
+    try { await api('/api/dev/personas'); DEMO = true } catch {}
     const params = new URLSearchParams(location.search)
     if (params.get('t')) { store.t = params.get('t'); history.replaceState(null, '', '/portal/') }
     try {
@@ -140,20 +142,34 @@
         ${docs.map(d => html`<div class="list-card"><span style="font-size:1.5rem">📄</span><div><b>${d.label}</b><div class="small muted">${d.help}</div></div></div>`)}
       </div>
       <button class="btn btn-primary btn-lg" id="go">Let's go →</button>
+      ${DEMO ? html`<div class="demo-tools"><b>Demo tools</b><p class="small muted">Creates clearly marked synthetic details and sample documents.</p><label class="check"><input id="demoDuplicate" type="checkbox"> Use a deliberate duplicate VAT example</label><button class="btn btn-line" id="fillAll" type="button">✨ Fill the whole form for me</button></div>` : ''}
     </div>`
     $('#go').onclick = () => { sessionStorage.setItem('vob_started', '1'); renderForm() }
+    if ($('#fillAll')) $('#fillAll').onclick = () => demoFill('all', $('#demoDuplicate').checked)
   }
 
   // ---------------------------------------------------------------- the form
   const SECTION_KEYS = V.SECTIONS.map(s => s.key)
 
   function sectionState (key) {
+    if (key === 'bank' && S.bankLocked && !bankUnlocked) return 'done'
     if (S.returned && S.returned.sections.includes(key)) return 'flag'
     if (key === 'documents') return S.documentTypes.filter(d => d.required).every(d => S.documents.some(x => x.docType === d.code)) ? 'done' : ''
     if (key === 'review') return ''
     const errs = V.validateSection(key, S.data, ctx())
     const anyValue = V.fieldsFor(key, ctx()).some(f => S.data[f.key])
     return anyValue && !Object.keys(errs).length ? 'done' : ''
+  }
+
+  async function demoFill (section, duplicate = false) {
+    try {
+      S = await call('/demo-fill', { method: 'POST', body: { section, duplicate } })
+      sessionStorage.setItem('vob_started', '1')
+      bankUnlocked = true
+      errors = {}; warnings = {}; setSave('saved')
+      if (section === 'all') step = 'review'
+      renderForm(); toast('Demo example filled. Review before submitting.', 'ok')
+    } catch (e) { toast(e.message, 'bad') }
   }
 
   function renderForm () {
@@ -163,11 +179,13 @@
     app.innerHTML = html`
       ${S.returned ? html`<div class="banner warn fade-in" style="margin-bottom:16px"><span class="i">✏️</span><div><b>Jones needs a few changes</b><div>${S.returned.message}</div></div></div>` : ''}
       <div class="card fade-in" style="padding:16px 16px 10px;margin-bottom:16px">
-        <nav class="stepper" aria-label="Steps">${V.SECTIONS.map((s, i) => html`<button type="button" data-step="${s.key}" class="${s.key === step ? 'on' : ''} ${sectionState(s.key)}" aria-current="${s.key === step ? 'step' : 'false'}"><span class="dot">${sectionState(s.key) === 'done' && s.key !== step ? UI.icon('check') : ICONS[s.key]}</span>${s.title}</button>`)}</nav>
+        <div class="small muted">Step ${idx + 1} of ${V.SECTIONS.length}</div>
+        <nav class="stepper" aria-label="Steps">${V.SECTIONS.map(s => html`<button type="button" data-step="${s.key}" class="${s.key === step ? 'on' : ''} ${sectionState(s.key)}" aria-current="${s.key === step ? 'step' : 'false'}"><span class="dot">${sectionState(s.key) === 'done' && s.key !== step ? UI.icon('check') : ICONS[s.key]}</span>${s.title}</button>`)}</nav>
         <div class="progress" aria-hidden="true"><i style="width:${Math.round((done / (SECTION_KEYS.length - 1)) * 100)}%"></i></div>
       </div>
       <section class="card pad-lg fade-in" id="sec">
         <div class="section-title"><span class="icon-bubble">${ICONS[step]}</span><div><h2 style="margin:0">${sec.title}</h2><div class="muted small">${sec.blurb}</div></div></div>
+        ${DEMO && step !== 'review' ? html`<div class="demo-tools compact"><span class="small muted">Synthetic test data only</span><button class="btn btn-line btn-sm" id="fillStep" type="button">✨ Fill this step</button></div>` : ''}
         <div id="body"></div>
         <div class="row" style="margin-top:20px">
           ${idx > 0 ? html`<button class="btn btn-line" id="back" type="button">← Back</button>` : ''}
@@ -176,8 +194,11 @@
         </div>
       </section>`
     $$('.stepper button').forEach(b => { b.onclick = () => go(b.dataset.step) })
+    const stepper = $('.stepper'), current = $('.stepper .on')
+    stepper.scrollLeft = current.offsetLeft - stepper.offsetLeft - (stepper.clientWidth - current.clientWidth) / 2
     if ($('#back')) $('#back').onclick = () => go(SECTION_KEYS[idx - 1])
     if ($('#next')) $('#next').onclick = next
+    if ($('#fillStep')) $('#fillStep').onclick = () => demoFill(step)
     if (step === 'documents') renderDocuments()
     else if (step === 'review') renderReview()
     else renderFields()
@@ -189,7 +210,7 @@
     const idx = SECTION_KEYS.indexOf(step)
     if (!['documents', 'review'].includes(step)) {
       await saveNow()
-      const errs = V.validateSection(step, S.data, ctx())
+      const errs = step === 'bank' && S.bankLocked && !bankUnlocked ? {} : V.validateSection(step, S.data, ctx())
       if (Object.keys(errs).length) { errors = errs; renderFields(); toast('Almost! Please check the highlighted fields.', 'bad'); $('.invalid input, .invalid select')?.focus(); return }
     }
     if (step === 'documents') {
@@ -241,7 +262,7 @@
     if (step === 'company' && !S.data.country) {
       body.innerHTML = html`<p class="muted">Let's start with where your company is registered. It decides which questions we ask.</p><div class="form-grid">${fieldHtml(fields[0], c)}</div>`
     } else {
-      body.innerHTML = html`<form class="form-grid" novalidate>${fields.map(f => f.key === 'bic' ? html`${extra}${fieldHtml(f, c)}` : fieldHtml(f, c))}</form>`
+      body.innerHTML = html`<form class="form-grid" novalidate>${fields.map(f => f.key === 'bic' ? html`<div id="ibanDerived" style="grid-column:1/-1">${extra}</div>${fieldHtml(f, c)}` : fieldHtml(f, c))}</form>`
     }
     $$('#body [data-k]').forEach(el => {
       const handler = () => {
@@ -263,7 +284,12 @@
   }
 
   function refreshField (f) {
-    if (f && f.key === 'iban') return renderFields()
+    if (f && f.key === 'iban') {
+      // Do not replace the whole form on blur: that can discard typing in the BIC.
+      const derived = V.deriveFromIban(S.data.iban)
+      const box = $('#ibanDerived')
+      if (box) box.innerHTML = derived?.sortCode ? html`<div class="derived"><span class="pill">✓ Sort code ${V.formatSortCode(derived.sortCode)}</span><span class="pill">✓ Account ${derived.accountNo}</span><span class="small muted">filled in from your IBAN</span></div>` : ''
+    }
     const el = $(`#f_${f.key}`)
     if (!el) return
     const pos = el.selectionStart
@@ -346,6 +372,8 @@
   function renderReview () {
     const c = ctx()
     const all = V.validateAll(S.data, c)
+    // Masked values are display-only; the server validates the stored bank details.
+    if (S.bankLocked && !bankUnlocked) for (const f of V.FIELDS.filter(f => f.section === 'bank')) delete all[f.key]
     const missing = S.documentTypes.filter(d => d.required && !S.documents.some(x => x.docType === d.code))
     const country = S.countries.find(x => x.code === S.data.country)?.name
     const value = (f) => {
@@ -408,8 +436,9 @@
       <p class="muted" style="max-width:520px;margin:0 auto">${created ? 'Please quote your Jones account number on every invoice.' : rejected ? 'We\'re not able to set up an account at this time. If you have questions, please contact the person at Jones who invited you.' : cancelled ? 'Please contact your Jones contact if you think this is a mistake.' : 'Our team will review your details and phone your bank contact to confirm them. We\'ll email you as soon as your account is ready.'}</p>
       ${created ? html`<div class="code-big" style="margin:18px 0">${S.vendorNumber}</div>` : ''}
       <p class="small muted">Reference ${S.reference}</p>
+      <div class="next-step"><b>What happens next</b><p>${created ? 'Your supplier account is ready. Quote the account number on invoices.' : rejected || cancelled ? 'Contact the Jones colleague who invited you if you have any questions.' : html`Jones will review your details through these stages: <b>${S.reviewStages.join(' → ')}</b>. ${S.bankCheckMode === 'IN_FINANCE' ? 'The Finance team also confirms your bank details by phone.' : 'A separate bank verifier confirms your bank details by phone before Finance approves.'} Review steps usually take two working days; a separate bank call usually takes one. We will email you when your account is ready or if changes are needed.`}</p><a href="/how-it-works.html">How supplier set-up works →</a></div>
     </div>
-    ${!cancelled ? html`<div class="card fade-in" style="margin-top:16px"><div class="track">${stages.map((s, i) => html`<div class="st ${i < cur || (i === cur && created) ? 'done' : i === cur ? 'current' : ''}"><div class="b">${i < cur || (i === 2 && created) ? '✓' : i + 1}</div><div class="l">${s.t}</div><div class="s">${s.d}</div></div>`)}</div></div>` : ''}`
+    ${!cancelled ? html`<div class="card fade-in" style="margin-top:16px"><div class="track" tabindex="0" role="region" aria-label="Onboarding progress">${stages.map((s, i) => html`<div class="st ${i < cur || (i === cur && created) ? 'done' : i === cur ? 'current' : ''}"><div class="b">${i < cur || (i === 2 && created) ? '✓' : i + 1}</div><div class="l">${s.t}</div><div class="s">${s.d}</div></div>`)}</div></div>` : ''}`
   }
 
   boot()

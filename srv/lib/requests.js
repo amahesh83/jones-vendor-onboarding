@@ -40,7 +40,8 @@ async function config () {
     SELECT.from('jones.vob.CompanyCodes'),
     U.settings(),
   ])
-  return { accountTypes, paymentTerms, countries, currencies, docTypes, whtCodes, companyCodes, settings: s }
+  const approvalRoutes = await SELECT.from('jones.vob.ApprovalRoutes').orderBy('priority', 'ID')
+  return { accountTypes, paymentTerms, countries, currencies, docTypes, whtCodes, companyCodes, approvalRoutes, approvalStepOptions: W.STEPS, settings: s }
 }
 
 const byCode = (list, code) => list.find(x => x.code === code)
@@ -212,6 +213,8 @@ async function vendorView (r) {
     round: r.round,
     returned: r.status === 'RETURNED' ? { message: r.returnMessage, sections: (r.returnSections || '').split(',').filter(Boolean) } : null,
     vendorNumber: r.status === 'CREATED' ? r.sapVendorNumber : null,
+    reviewStages: r.routeSnapshot ? W.routeFor(r).steps.map(s => s.short) : [],
+    bankCheckMode: r.routeSnapshot ? W.routeFor(r).bankCheckMode : 'SEPARATE',
     submittedAt: r.submittedAt,
     lastSavedAt: r.lastSavedAt,
     documents: docs.filter(d => d.scanStatus !== 'INFECTED'),
@@ -363,7 +366,9 @@ async function submit (r, { declarationName, accept, ip }, actor) {
   }
 
   const round = (r.round || 0) + 1
+  const route = r.routeSnapshot ? W.routeFor(r) : require('./approval-routes').resolve(cfg.approvalRoutes, data, cfg.settings)
   const patch = {
+    routeSnapshot: JSON.stringify(route),
     ...cleaned, status: 'SUBMITTED', round, submittedAt: iso(now()),
     declarationName: String(declarationName).trim().slice(0, 120), declarationAt: iso(now()), declarationIp: String(ip || '').slice(0, 64),
     returnMessage: null, returnSections: null, sapSimulatedOk: false, sapSimulationJson: null, duplicateJustification: null,
@@ -374,35 +379,43 @@ async function submit (r, { declarationName, accept, ip }, actor) {
   await U.audit(r.ID, actor, 'SUBMITTED', round > 1 ? `Resubmitted (round ${round})` : 'Submitted with the declaration signed by ' + patch.declarationName)
 
   const { result, blocking } = await runChecks(merged)
-  const step = W.STEPS[0]
+  const step = route.steps[0]
   await UPDATE(E.R).set({ duplicatesJson: JSON.stringify(result), duplicateBlocking: blocking, status: step.status, currentStep: step.code, stepSince: iso(now()), lastReminderAt: null, escalatedAt: null }).where({ ID: r.ID })
+  await U.audit(r.ID, U.SYSTEM, 'ROUTE_ASSIGNED', `Route: ${route.name} - ${route.steps.map(s => s.label).join(' -> ')}`)
+  await notifyStep(merged, step.status, cfg)
   const found = result.sap.matches.length + result.open.length
   await U.audit(r.ID, U.SYSTEM, 'CHECKS_RUN', found ? `Automatic checks found ${found} possible duplicate(s)${blocking ? ' (exact VAT/IBAN match in SAP)' : ''}` : 'Automatic checks passed: no duplicates found')
 
   await mail.send({ to: r.vendorEmail, template: 'receiptVendor', requestId: r.ID, data: { companyName: merged.companyName, ref: r.requestNumber } })
-  await mail.send({ to: r.requesterEmail, template: 'submittedRequester', requestId: r.ID, actionUrl: internalLink(cfg, r.ID), data: { companyName: merged.companyName, ref: r.requestNumber, link: internalLink(cfg, r.ID) } })
+  await mail.send({ to: r.requesterEmail, template: 'submittedRequester', requestId: r.ID, actionUrl: internalLink(cfg, r.ID), data: { companyName: merged.companyName, ref: r.requestNumber, link: internalLink(cfg, r.ID), nextStepLabel: step.label, routeSummary: route.steps.map(s => s.short).join(' → ') } })
   return { reference: r.requestNumber, status: vendorStatus({ ...merged, status: step.status }) }
 }
 
 // ------------------------------------------------------------------ approvals
 
 async function notifyStep (r, status, cfg, prefix) {
-  const step = W.stepForStatus(status)
+  const step = W.routeFor(r).steps.find(s => s.status === status)
   if (!step) return
   const link = internalLink(cfg, r.ID)
   const to = step.code === 'REQUESTER' ? [r.requesterEmail] : await mail.roleRecipients(step.role)
-  await mail.send({ to, template: 'task', requestId: r.ID, actionUrl: link, data: { companyName: r.companyName, ref: r.requestNumber, stepLabel: step.label, link, prefix } })
+  await mail.send({ to, template: 'task', requestId: r.ID, actionUrl: link, data: { companyName: r.companyName, ref: r.requestNumber, stepLabel: step.label, routeSummary: W.routeFor(r).steps.map(s => s.short).join(' → '), link, prefix } })
 }
 
-async function bankConfirmed (r) {
-  const rows = await SELECT.from(E.B).where({ request_ID: r.ID, round: r.round, outcome: 'CONFIRMED' })
-  return rows.some(b => V.normalizeIban(b.ibanChecked) === V.normalizeIban(r.iban || r.bankAccountNo))
+async function bankConfirmed (r, actor) {
+  const rows = await SELECT.from(E.B).where({ request_ID: r.ID, round: r.round }).orderBy('recordedAt desc')
+  const latest = rows.find(b => W.routeFor(r).bankCheckMode !== 'IN_FINANCE' || b.userId === actor?.id)
+  return !!latest && latest.outcome === 'CONFIRMED' && V.normalizeIban(latest.ibanChecked) === V.normalizeIban(r.iban || r.bankAccountNo)
+}
+
+async function canAct (actor, r, decisions) {
+  const checks = await SELECT.from(E.B).where({ request_ID: r.ID, round: r.round })
+  return W.canAct(actor, r, decisions, checks)
 }
 
 async function decide (actor, id, action, payload = {}) {
   const r = await load(id)
   const decisions = await decisionsOf(id)
-  const can = W.canAct(actor, r, decisions)
+  const can = await canAct(actor, r, decisions)
   if (!can.ok) fail(403, 'NOT_ALLOWED', can.reason)
   const cfg = await config()
   const step = can.step
@@ -424,15 +437,15 @@ async function decide (actor, id, action, payload = {}) {
         Object.assign(r, patch)
       }
     }
-    const blocker = W.approvalBlocker(r, { bankConfirmed: await bankConfirmed(r), simulationValid: !!r.sapSimulatedOk })
+    const blocker = W.approvalBlocker(r, { bankConfirmed: await bankConfirmed(r, actor), simulationValid: !!r.sapSimulatedOk })
     if (blocker) fail(409, 'BLOCKED', blocker)
-    const terms = byCode(cfg.paymentTerms, r.paymentTerms)
-    const next = W.nextStatusAfter(step.code, !!terms?.requiresProcurement)
+    const next = W.nextInRoute(r, step.code)
     await INSERT.into(E.S).entries({ ID: cds.utils.uuid(), request_ID: id, round: r.round, step: step.code, decision: 'APPROVED', userId: actor.id, userName: actor.name, comment, decidedAt: iso(now()) })
-    const nextStep = W.stepForStatus(next)
+    const nextStep = W.routeFor(r).steps.find(s => s.status === next)
     await UPDATE(E.R).set({ status: next, currentStep: nextStep?.code || null, stepSince: iso(now()), lastReminderAt: null, escalatedAt: null }).where({ ID: id })
     await U.audit(id, actor, 'APPROVED', `${step.label} approved${comment ? ': ' + comment : ''}`)
     if (nextStep) await notifyStep(r, next, cfg)
+    if (next === 'CREATING') await require('./sap/creation-queue').enqueue(id)
     return { status: next, startCreation: next === 'CREATING' }
   }
 
@@ -469,8 +482,9 @@ const NUMBER_SOURCES = ['INDEPENDENT_BANK', 'INDEPENDENT_WEBSITE', 'EXISTING_REC
 
 async function recordBankVerification (actor, id, input) {
   const r = await load(id)
-  if (r.status !== 'PENDING_BANK_CHECK') fail(409, 'WRONG_STATUS', 'The bank call-back can only be recorded at the bank check step.')
-  const can = W.canAct(actor, r, await decisionsOf(id))
+  const inFinance = W.routeFor(r).bankCheckMode === 'IN_FINANCE' && r.status === 'PENDING_FINANCE'
+  if (r.status !== 'PENDING_BANK_CHECK' && !inFinance) fail(409, 'WRONG_STATUS', 'The bank call-back is available only at the configured bank or Finance step.')
+  const can = await canAct(actor, r, await decisionsOf(id))
   if (!can.ok) fail(403, 'NOT_ALLOWED', can.reason)
   const errors = {}
   if (V.checkPhone(input.numberCalled)) errors.numberCalled = 'Please enter the number you called.'
@@ -510,7 +524,7 @@ function financeDefaults (r, cfg) {
 async function setFinanceData (actor, id, input) {
   const r = await load(id)
   if (r.status === 'PENDING_FINANCE') {
-    const can = W.canAct(actor, r, await decisionsOf(id))
+    const can = await canAct(actor, r, await decisionsOf(id))
     if (!can.ok) fail(403, 'NOT_ALLOWED', can.reason)
   } else if (r.status === 'SAP_ERROR') {
     if (!isAdmin(actor)) fail(403, 'NOT_ALLOWED', 'Only a master data admin can correct data after an SAP error.')
@@ -547,7 +561,7 @@ async function payloadFor (r, cfg, testRun) {
 async function simulate (actor, id) {
   const r = await load(id)
   if (r.status === 'PENDING_FINANCE') {
-    const can = W.canAct(actor, r, await decisionsOf(id))
+    const can = await canAct(actor, r, await decisionsOf(id))
     if (!can.ok) fail(403, 'NOT_ALLOWED', can.reason)
   } else if (!(r.status === 'SAP_ERROR' && isAdmin(actor))) fail(409, 'WRONG_STATUS', 'Simulation is available at the finance step.')
   const cfg = await config()
@@ -567,7 +581,7 @@ async function simulate (actor, id) {
 
 async function justifyDuplicate (actor, id, text) {
   const r = await load(id)
-  const can = W.canAct(actor, r, await decisionsOf(id))
+  const can = await canAct(actor, r, await decisionsOf(id))
   if (!can.ok) fail(403, 'NOT_ALLOWED', can.reason)
   const t = String(text || '').trim()
   if (t.length < 10) fail(422, 'INVALID', 'Please explain in a sentence why a new vendor is needed.', { errors: { text: 'Please explain in a sentence.' } })
@@ -584,6 +598,7 @@ async function retry (actor, id, input = {}) {
   if (input.createMissingBank !== undefined || input.reconAccount !== undefined) await setFinanceData(actor, id, input)
   await UPDATE(E.R).set({ status: 'CREATING', currentStep: null, stepSince: iso(now()) }).where({ ID: id, status: 'SAP_ERROR' })
   await U.audit(id, actor, 'SAP_RETRY', 'Retrying SAP creation')
+  await require('./sap/creation-queue').enqueue(id)
   return { status: 'CREATING', startCreation: true }
 }
 
@@ -602,39 +617,38 @@ const pending = new Set()
 const delays = () => cds.env.requires?.vob?.retryDelays || [0, 2000, 5000]
 
 /** Start creation after the approving transaction has committed. */
-function startCreation (id) {
+function startCreation (_id) {
   const job = new Promise(resolve => setImmediate(resolve)).then(async () => {
     cds.context = { user: cds.User.privileged }
-    await createInSap(id)
+    await require('./sap/creation-queue').flush()
   }).catch(e => LOG.error('SAP creation job failed', e)).finally(() => pending.delete(job))
   pending.add(job)
   return job
 }
 
-async function idle () { while (pending.size) await Promise.all([...pending]) }
+async function idle () {
+  while (pending.size) await Promise.all([...pending])
+  await require('./sap/creation-queue').idle()
+}
 
-async function createInSap (id) {
-  const r = await cds.tx(() => SELECT.one.from(E.R).where({ ID: id }))
+async function createInSap (id, { attempt = 1 } = {}) {
+  const tx = fn => cds.tx(fn)
+  const r = await tx(() => SELECT.one.from(E.R).where({ ID: id }))
   if (!r || r.status !== 'CREATING') return
-  const cfg = await cds.tx(() => config())
-  const payload = await cds.tx(() => payloadFor(r, cfg, false))
+  const cfg = await tx(() => config())
+  const payload = await tx(() => payloadFor(r, cfg, false))
   let result, error
-  for (const [i, wait] of delays().entries()) {
-    if (wait) await new Promise(res => setTimeout(res, wait))
-    try {
-      result = await sap().createVendor(payload)
-      error = null
-      break
-    } catch (e) {
-      error = e
-      await cds.tx(() => UPDATE(E.R).set({ sapAttempts: (r.sapAttempts || 0) + i + 1 }).where({ ID: id }))
-      if (e.kind !== 'TRANSIENT') break
-    }
+  try {
+    result = await sap().createVendor(payload)
+  } catch (e) {
+    error = e
+    await tx(() => UPDATE(E.R).set({ sapAttempts: (r.sapAttempts || 0) + 1 }).where({ ID: id }))
+    if (e.kind === 'TRANSIENT' && attempt < delays().length) throw e
   }
   if (error) {
     const messages = error.messages || [{ type: 'E', text: error.message }]
     const plain = plainEnglish(messages)
-    await cds.tx(async () => {
+    await tx(async () => {
       await UPDATE(E.R).set({ status: 'SAP_ERROR', sapMessagesJson: JSON.stringify({ messages, plain, kind: error.kind || 'UNKNOWN' }) }).where({ ID: id })
       await U.audit(id, U.SYSTEM, 'SAP_ERROR', plain, { messages })
       const link = `${base(cfg)}/internal/#/admin/sap-errors`
@@ -642,28 +656,28 @@ async function createInSap (id) {
     })
     return
   }
-  await cds.tx(async () => {
+  await tx(async () => {
     await UPDATE(E.R).set({ status: 'CREATED', sapVendorNumber: result.vendorNumber, createdInSapAt: iso(now()), closedAt: iso(now()), currentStep: null, sapMessagesJson: JSON.stringify({ messages: result.messages, result: result.result }) }).where({ ID: id })
     await U.audit(id, U.SYSTEM, 'CREATED', result.result === 'ALREADY_CREATED' ? `SAP already had vendor ${result.vendorNumber} for this request (no duplicate created)` : `Vendor ${result.vendorNumber} created in SAP company code ${r.companyCode}`)
   })
   // attachments: FIN-010 PDF + documents (failure here never undoes the creation)
   try {
-    const pdf = await cds.tx(() => fin010(id))
+    const pdf = await tx(() => fin010(id))
     await sap().addAttachment(result.vendorNumber, { fileName: `FIN-010-${r.requestNumber}.pdf`, mimeType: 'application/pdf', contentBase64: pdf.toString('base64'), description: 'FIN-010 vendor set-up form with approval trail' })
-    const docs = await cds.tx(() => SELECT.from(E.D).columns('fileName', 'mimeType', 'content', 'docType').where({ request_ID: id, scanStatus: 'CLEAN' }))
+    const docs = await tx(() => SELECT.from(E.D).columns('fileName', 'mimeType', 'content', 'docType').where({ request_ID: id, scanStatus: 'CLEAN' }))
     for (const d of docs) {
       const buf = await toBuffer(d.content)
       await sap().addAttachment(result.vendorNumber, { fileName: `${d.docType}-${d.fileName}`, mimeType: d.mimeType, contentBase64: buf.toString('base64') })
     }
-    await cds.tx(async () => {
+    await tx(async () => {
       await UPDATE(E.R).set({ pdfAttached: true }).where({ ID: id })
       await U.audit(id, U.SYSTEM, 'ATTACHED', `FIN-010 PDF and ${docs.length} document(s) attached to vendor ${result.vendorNumber} in SAP`)
     })
   } catch (e) {
     LOG.error('Attaching documents failed', e)
-    await cds.tx(() => U.audit(id, U.SYSTEM, 'ATTACH_FAILED', `The vendor was created, but attaching the documents in SAP failed: ${e.message}`))
+    await tx(() => U.audit(id, U.SYSTEM, 'ATTACH_FAILED', `The vendor was created, but attaching the documents in SAP failed: ${e.message}`))
   }
-  await cds.tx(async () => {
+  await tx(async () => {
     const fresh = await SELECT.one.from(E.R).where({ ID: id })
     const link = internalLink(cfg, id)
     await mail.send({ to: fresh.requesterEmail, template: 'createdRequester', requestId: id, actionUrl: link, data: { companyName: fresh.companyName, vendorNumber: fresh.sapVendorNumber, companyCode: fresh.companyCode, link } })
@@ -707,18 +721,18 @@ async function document (actor, id, docId) {
 
 function waitingOn (r) {
   if (['INVITED', 'IN_PROGRESS', 'RETURNED'].includes(r.status)) return 'Vendor'
-  const step = W.stepForStatus(r.status)
+  const step = W.routeStep(r)
   if (step) return step.code === 'REQUESTER' ? r.requesterName : W.roleLabel(step.role)
   if (r.status === 'SAP_ERROR') return 'Master data admin'
   if (r.status === 'CREATING') return 'SAP'
   return ''
 }
 
-function rowOf (r, cfg, actor, decisions) {
+function rowOf (r, cfg, actor, decisions, bankChecks) {
   const info = W.STATUS_INFO[r.status]
-  const step = W.stepForStatus(r.status)
+  const step = W.routeStep(r)
   const inStep = r.stepSince ? U.workingDaysBetween(r.stepSince, now()) : 0
-  const limit = step ? cfg.settings[step.escalate] || 5 : null
+  const limit = step ? step.escalationDays || cfg.settings[step.escalate] || 5 : null
   return {
     ID: r.ID, requestNumber: r.requestNumber, companyName: r.companyName, vendorEmail: r.vendorEmail,
     status: r.status, statusLabel: info.label, tone: info.tone, open: info.open,
@@ -727,17 +741,18 @@ function rowOf (r, cfg, actor, decisions) {
     requesterName: r.requesterName, requesterId: r.requesterId, accountType: r.accountType, paymentTerms: r.paymentTerms, country: r.country,
     createdAt: r.createdAt, sapVendorNumber: r.sapVendorNumber, ibanTail: r.iban ? V.maskTail(r.iban) : '',
     duplicateBlocking: !!r.duplicateBlocking,
-    canAct: actor ? W.canAct(actor, r, decisions.filter(d => d.request_ID === r.ID)).ok : false,
+    canAct: actor ? W.canAct(actor, r, decisions.filter(d => d.request_ID === r.ID), bankChecks.filter(b => b.request_ID === r.ID)).ok : false,
   }
 }
 
-const LIST_COLUMNS = ['ID', 'requestNumber', 'companyName', 'vendorEmail', 'status', 'stepSince', 'createdAt', 'closedAt', 'requesterName', 'requesterId', 'accountType', 'paymentTerms', 'country', 'sapVendorNumber', 'iban', 'duplicateBlocking', 'round', 'createdInSapAt']
+const LIST_COLUMNS = ['ID', 'requestNumber', 'companyName', 'vendorEmail', 'status', 'stepSince', 'createdAt', 'closedAt', 'requesterName', 'requesterId', 'accountType', 'paymentTerms', 'country', 'sapVendorNumber', 'iban', 'duplicateBlocking', 'round', 'createdInSapAt', 'routeSnapshot']
 
 async function list (actor, { view = 'all', q = '' } = {}) {
   const cfg = await config()
   const rows = await SELECT.from(E.R).columns(...LIST_COLUMNS).orderBy('createdAt desc')
   const decisions = await SELECT.from(E.S).columns('request_ID', 'round', 'step', 'userId')
-  let out = rows.map(r => rowOf(r, cfg, actor, decisions))
+  const bankChecks = await SELECT.from(E.B).columns('request_ID', 'round', 'userId')
+  let out = rows.map(r => rowOf(r, cfg, actor, decisions, bankChecks))
   if (view === 'waiting') out = out.filter(r => r.canAct)
   else if (view === 'mine') out = out.filter(r => r.requesterId === actor.id)
   else if (view === 'open') out = out.filter(r => r.open)
@@ -783,6 +798,23 @@ async function dashboard (actor) {
 
 const canSeeBank = actor => [W.ROLES.BANK_CHECK, W.ROLES.FINANCE, W.ROLES.ADMIN].some(r => hasRole(actor, r))
 
+function nextAction (r) {
+  const step = W.routeStep(r)
+  if (step) return `${step.label}: ${step.code === 'REQUESTER' ? r.requesterName + ' (requester)' : W.roleLabel(step.role)} reviews this request next.${step.code === 'FINANCE' && W.routeFor(r).bankCheckMode === 'IN_FINANCE' ? ' Finance must record a confirmed bank call-back before approving.' : ''} Usual time: ${step.reminderDays || (step.code === 'BANK_CHECK' ? 1 : 2)} working day(s). These are reminder targets, not guaranteed completion times.`
+  return {
+    INVITED: 'The vendor opens their invitation and confirms an email code. Invitations normally expire after 30 days.',
+    IN_PROGRESS: 'The vendor completes the form and uploads documents. Submission selects and saves the matching approval route.',
+    RETURNED: 'The vendor makes the requested changes and resubmits. All approval steps restart, including a fresh bank call-back.',
+    SUBMITTED: 'The system checks the details and possible duplicates, then starts the saved approval route.',
+    CREATING: 'The system creates the vendor in SAP. Usually a few moments; temporary failures are retried automatically.',
+    SAP_ERROR: 'A master data administrator reviews the SAP error, corrects the allowed finance fields and retries. No completion time is guaranteed until the error is resolved.',
+    CREATED: `Vendor ${r.sapVendorNumber || ''} is ready. The vendor and requester are notified; the completed form and documents are attached in SAP.`,
+    REJECTED: 'This request is closed. The requester sees the reason; the vendor receives a neutral update.',
+    CANCELLED: 'This request is closed. The requester can send a new invitation if onboarding is still needed.',
+    EXPIRED: 'The requester can resend the invitation to provide a fresh secure link.',
+  }[r.status] || 'The Jones team will review the current status.'
+}
+
 async function detail (actor, id, { revealBank = false } = {}) {
   const r = await load(id)
   const cfg = await config()
@@ -813,14 +845,15 @@ async function detail (actor, id, { revealBank = false } = {}) {
     }))
   }
   const terms = byCode(cfg.paymentTerms, r.paymentTerms)
-  const steps = W.stepsFor(!!terms?.requiresProcurement).map(s => {
+  const route = r.routeSnapshot || r.round ? W.routeFor(r) : require('./approval-routes').resolve(cfg.approvalRoutes, r, cfg.settings)
+  const steps = route.steps.map(s => {
     const d = decisions.filter(x => x.round === r.round && x.step === s.code).slice(-1)[0]
     const state = r.status === s.status ? 'current' : d?.decision === 'APPROVED' ? 'done' : 'todo'
-    return { code: s.code, label: s.label, short: s.short, state, by: d?.userName, at: d?.decidedAt, decision: d?.decision }
+    return { code: s.code, label: s.label, short: s.short, reminderDays: s.reminderDays, escalationDays: s.escalationDays, state, by: d?.userName, at: d?.decidedAt, decision: d?.decision }
   })
-  const can = W.canAct(actor, r, decisions)
-  const pendingStep = W.stepForStatus(r.status)
-  const bankOk = await bankConfirmed(r)
+  const can = W.canAct(actor, r, decisions, bankChecks)
+  const pendingStep = W.routeStep(r)
+  const bankOk = await bankConfirmed(r, actor)
   const blocker = can.ok ? W.approvalBlocker(r, { bankConfirmed: bankOk, simulationValid: !!r.sapSimulatedOk }) : undefined
   const owner = r.requesterId === actor.id
   const missing = r.round > 0 ? missingDocuments(r, cfg, documents) : []
@@ -841,6 +874,8 @@ async function detail (actor, id, { revealBank = false } = {}) {
       duplicateBlocking: !!r.duplicateBlocking, duplicateJustification: r.duplicateJustification,
       countryName: byCode(cfg.countries, r.country)?.name,
     },
+    nextAction: nextAction(r),
+    route: { name: route.name, bankCheckMode: route.bankCheckMode, saved: !!r.round, summary: route.steps.map(s => s.short).join(' → ') },
     data, bankRevealed: reveal, canSeeBank: canSeeBank(actor),
     duplicates: U.parseJson(r.duplicatesJson, null),
     simulation: U.parseJson(r.sapSimulationJson, null),
@@ -852,7 +887,7 @@ async function detail (actor, id, { revealBank = false } = {}) {
     allowed: {
       approve: can.ok && !blocker, approveBlocker: can.ok ? blocker : undefined,
       sendBack: can.ok, reject: can.ok, why: can.ok ? undefined : (pendingStep ? can.reason : undefined),
-      bankCheck: can.ok && r.status === 'PENDING_BANK_CHECK',
+      bankCheck: can.ok && (r.status === 'PENDING_BANK_CHECK' || (r.status === 'PENDING_FINANCE' && route.bankCheckMode === 'IN_FINANCE')),
       finance: (can.ok && r.status === 'PENDING_FINANCE') || (r.status === 'SAP_ERROR' && isAdmin(actor)),
       simulate: (can.ok && r.status === 'PENDING_FINANCE') || (r.status === 'SAP_ERROR' && isAdmin(actor)),
       justify: can.ok && !!r.duplicateBlocking && !r.duplicateJustification,
@@ -892,18 +927,18 @@ async function runJobs () {
       }
       continue
     }
-    const step = W.stepForStatus(r.status)
+    const step = W.routeStep(r)
     if (!step || !r.stepSince) continue
     const days = U.workingDaysBetween(r.stepSince, now())
-    if (days >= (cfg.settings[step.escalate] || 5) && !r.escalatedAt) {
+    if (days >= (step.escalationDays || cfg.settings[step.escalate] || 5) && !r.escalatedAt) {
       await notifyStep(r, r.status, cfg, 'Escalation: ')
       const admins = await mail.roleRecipients(W.ROLES.ADMIN)
       const link = internalLink(cfg, r.ID)
-      await mail.send({ to: admins, template: 'task', requestId: r.ID, actionUrl: link, data: { companyName: r.companyName, ref: r.requestNumber, stepLabel: step.label, link, prefix: 'Escalation: ', waitingDays: days } })
+      await mail.send({ to: admins, template: 'task', requestId: r.ID, actionUrl: link, data: { companyName: r.companyName, ref: r.requestNumber, stepLabel: step.label, routeSummary: W.routeFor(r).steps.map(s => s.short).join(' → '), link, prefix: 'Escalation: ', waitingDays: days } })
       await UPDATE(E.R).set({ escalatedAt: iso(now()), lastReminderAt: iso(now()) }).where({ ID: r.ID })
       await U.audit(r.ID, U.SYSTEM, 'ESCALATED', `${step.label} waiting ${days} working days: escalated`)
       out.escalations++
-    } else if (days >= (cfg.settings[step.remind] || 2) && !r.lastReminderAt) {
+    } else if (days >= (step.reminderDays || cfg.settings[step.remind] || 2) && !r.lastReminderAt) {
       await notifyStep(r, r.status, cfg, 'Reminder: ')
       await UPDATE(E.R).set({ lastReminderAt: iso(now()) }).where({ ID: r.ID })
       await U.audit(r.ID, U.SYSTEM, 'REMINDER', `${step.label} waiting ${days} working days: reminder sent`)

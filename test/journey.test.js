@@ -32,6 +32,14 @@ async function vendorSession (link) {
   return { token, h }
 }
 
+async function submittedExample (suffix, options = {}) {
+  const out = (await POST('/api/internal/requests', { companyName: `Route ${suffix} Demo Ltd`, vendorContactName: 'Route Tester', vendorEmail: `route-${suffix}@example.test`, accountType: 'YBIV', paymentTerms: '60EOM', businessReason: 'Route acceptance test', country: 'IE', ...options }, as('rachel'))).data
+  const session = await vendorSession(out.devLink)
+  await POST('/api/portal/demo-fill', { section: 'all' }, session.h)
+  await POST('/api/portal/submit', { declarationName: 'Route Tester', accept: true }, session.h)
+  return { ...out, session }
+}
+
 describe('vendor onboarding journey', () => {
   let id, link, h
 
@@ -78,7 +86,6 @@ describe('vendor onboarding journey', () => {
     await fails(POST(`/api/internal/requests/${id}/approve`, {}, as('ronan')), 403, /invited this vendor|Only the person/)
     await POST(`/api/internal/requests/${id}/approve`, {}, as('rachel'))
     await fails(POST(`/api/internal/requests/${id}/approve`, {}, as('rachel')), 403)
-    await POST(`/api/internal/requests/${id}/approve`, {}, as('paddy'))
     let d = (await GET(`/api/internal/requests/${id}`, as('priya'))).data
     assert.equal(d.request.status, 'PENDING_PROCUREMENT')
     await POST(`/api/internal/requests/${id}/approve`, {}, as('priya'))
@@ -117,7 +124,6 @@ describe('vendor onboarding journey', () => {
     await POST('/api/portal/submit', { declarationName: 'Sam', accept: true }, s.h)
     const x = data.ID
     await POST(`/api/internal/requests/${x}/approve`, {}, as('ronan'))
-    await POST(`/api/internal/requests/${x}/approve`, {}, as('paddy'))
     await POST(`/api/internal/requests/${x}/bank-verification`, { numberCalled: '+353 21 555 0000', numberSource: 'EXISTING_RECORD', personSpokenTo: 'Sam', outcome: 'CONFIRMED' }, as('ben'))
     await POST(`/api/internal/requests/${x}/approve`, {}, as('ben'))
     await POST(`/api/internal/requests/${x}/simulate`, {}, as('fiona'))
@@ -147,5 +153,153 @@ describe('vendor onboarding journey', () => {
     const prev = process.env.NODE_ENV
     process.env.NODE_ENV = 'production'
     try { assert.throws(() => require('../srv/auth/dev-auth')(), /never run in production/) } finally { process.env.NODE_ENV = prev }
+  })
+
+  test('example data validates for IE and GB, including duplicate opt-in', async () => {
+    const X = require('../srv/lib/demo-examples')
+    for (const country of ['IE', 'GB']) {
+      const a = X.example({ country }), b = X.example({ country })
+      assert.notEqual(a.company.companyName, b.company.companyName)
+      const data = { ...a.company, ...a.contacts, ...a.tax, ...a.bank }
+      assert.deepEqual(V.validateAll(data, { country, subcontractor: true }), {})
+      assert.equal(a.bank.accountHolder, a.company.companyName)
+      assert.match(a.contacts.accountsEmail, /\.test$/)
+      assert.equal(V.deriveFromIban(a.bank.iban).country, country)
+    }
+    assert.equal(X.example({ duplicate: true }).tax.vatNumber, 'IE6388047V')
+  })
+
+  test('demo whole-form fill uploads required PDFs through the real portal', async () => {
+    const out = (await POST('/api/internal/requests', { companyName: 'Demo Fill Test Ltd', vendorContactName: 'Demo Tester', vendorEmail: 'fill@example.test', accountType: 'YBCS', paymentTerms: '60EOM', businessReason: 'Test' }, as('rachel'))).data
+    const session = await vendorSession(out.devLink)
+    const view = (await POST('/api/portal/demo-fill', { section: 'all' }, session.h)).data
+    assert.equal(view.documents.length, view.documentTypes.filter(d => d.required).length)
+    assert.ok(view.documents.every(d => d.scanStatus === 'CLEAN' && d.fileName.startsWith('demo-')))
+    await POST('/api/portal/submit', { accept: true, declarationName: 'Demo Tester' }, session.h)
+  })
+
+  test('demo generator and both HTTP endpoints refuse production', async () => {
+    const prev = process.env.NODE_ENV
+    process.env.NODE_ENV = 'production'
+    try {
+      assert.throws(() => require('../srv/lib/demo-examples').example(), /Not found/)
+      await fails(GET('/api/dev/example'), 404)
+      await fails(POST('/api/portal/demo-fill', { section: 'all' }), 404)
+      assert.equal(require('../srv/routes/dev').enabled(), false)
+    } finally { process.env.NODE_ENV = prev }
+  })
+
+  test('approval outbox write rolls back with its transaction', async () => {
+    const queue = require('../srv/lib/sap/creation-queue')
+    const jobId = cds.utils.uuid()
+    await assert.rejects(cds.tx(async () => { await queue.enqueue(jobId); throw new Error('rollback test') }), /rollback test/)
+    assert.equal(await SELECT.one.from('jones.vob.SapCreationJobs').where({ requestId: jobId }), undefined)
+  })
+
+  test('transient SAP failures persist backoff and resume; competing workers claim once', async () => {
+    const queue = require('../srv/lib/sap/creation-queue')
+    const mock = require('../srv/lib/sap/mock')
+    const original = mock.createVendor
+    const freshId = cds.utils.uuid()
+    const r = await SELECT.one.from('jones.vob.VendorRequests').where({ ID: id })
+    await cds.tx(async () => {
+      await INSERT.into('jones.vob.VendorRequests').entries({ ...r, ID: freshId, requestNumber: 'VOB-2099-90002', companyName: 'Transient Queue Test Ltd', status: 'CREATING', sapVendorNumber: null })
+      await queue.enqueue(freshId)
+    })
+    let calls = 0
+    mock.createVendor = async payload => {
+      if (++calls === 1) throw new (require('../srv/lib/sap/errors').SapTransientError)('Synthetic network failure')
+      return original(payload)
+    }
+    try {
+      await queue.flush()
+      const waiting = await SELECT.one.from('jones.vob.SapCreationJobs').where({ requestId: freshId })
+      assert.equal(waiting.state, 'READY')
+      assert.equal(waiting.attempts, 1)
+      assert.ok(waiting.nextAttemptAt)
+      // A second module instance represents an independent worker's in-process state.
+      delete require.cache[require.resolve('../srv/lib/sap/creation-queue')]
+      const second = require('../srv/lib/sap/creation-queue')
+      await Promise.all([queue.idle(), second.idle()])
+      assert.equal(calls, 2)
+      assert.equal((await SELECT.one.from('jones.vob.VendorRequests').where({ ID: freshId })).status, 'CREATED')
+    } finally { mock.createVendor = original }
+  })
+
+  test('unmasked bank reads emit a plugin event with field names, never values', async () => {
+    const auditLog = await cds.connect.to('audit-log')
+    const original = auditLog.log, seen = []
+    auditLog.log = async (event, data) => { seen.push({ event, data }) }
+    try {
+      await GET(`/api/internal/requests/${id}?reveal=bank`, as('fiona'))
+      assert.equal(seen[0].event, 'SensitiveDataRead')
+      assert.equal(seen[0].data.user, 'fiona.finance@jones.test')
+      assert.equal(seen[0].data.object.id.ID, id)
+      assert.ok(seen[0].data.attributes.some(a => a.name === 'iban'))
+      assert.ok(!JSON.stringify(seen).includes('IE29AIBK'))
+    } finally { auditLog.log = original }
+  })
+
+  test('default route has one business approval; admin edits do not change snapshots', async () => {
+    const cfg = (await GET('/api/internal/config', as('adam'))).data
+    const r = await submittedExample('default')
+    const d = (await GET(`/api/internal/requests/${r.ID}`, as('rachel'))).data
+    assert.deepEqual(d.steps.map(s => s.code), ['REQUESTER', 'BANK_CHECK', 'FINANCE'])
+    assert.equal(d.steps.filter(s => !['REQUESTER', 'BANK_CHECK'].includes(s.code)).length, 1)
+    const amended = cfg.approvalRoutes.map(x => x.ID === 'DEFAULT' ? { ...x, steps: 'PURCHASING,BANK_CHECK,FINANCE', name: 'New default' } : x)
+    try {
+      await fails(PUT('/api/internal/admin/routes', { routes: amended, requesterReviewEnabled: true }, as('rachel')), 403)
+      await PUT('/api/internal/admin/routes', { routes: amended, requesterReviewEnabled: true }, as('adam'))
+      const saved = (await GET(`/api/internal/requests/${r.ID}`, as('rachel'))).data
+      assert.equal(saved.route.name, 'Default')
+      assert.deepEqual(saved.steps.map(s => s.code), d.steps.map(s => s.code))
+      const tester = (await POST('/api/internal/admin/routes/test', { vendor: { accountType: 'YBIV', paymentTerms: '60EOM', companyCode: 'IE01', country: 'IE' } }, as('adam'))).data
+      assert.equal(tester.name, 'New default')
+      await fails(PUT('/api/internal/admin/routes', { routes: amended.filter(x => x.ID !== 'DEFAULT'), requesterReviewEnabled: true }, as('adam')), 422, /default route/)
+      await fails(PUT('/api/internal/admin/routes', { routes: amended.map(x => ({ ...x, steps: 'FINANCE,BANK_CHECK' })), requesterReviewEnabled: true }, as('adam')), 422, /Finance must be last/)
+      const subcontract = await submittedExample('subcontract', { accountType: 'YBCS' })
+      const sub = (await GET(`/api/internal/requests/${subcontract.ID}`, as('rachel'))).data
+      assert.deepEqual(sub.steps.map(s => s.code), ['REQUESTER', 'PROCUREMENT', 'BANK_CHECK', 'FINANCE'])
+    } finally { await PUT('/api/internal/admin/routes', { routes: cfg.approvalRoutes, requesterReviewEnabled: true }, as('adam')) }
+  })
+
+  test('IN_FINANCE route: requester review off, call-back gated, fresh after bank send-back', async () => {
+    const cfg = (await GET('/api/internal/config', as('adam'))).data
+    const lowRisk = { ID: 'LOW_RISK_TEST', priority: 1, name: 'Low-risk Finance', active: true, accountTypes: 'YBIV', country: 'IE', steps: 'FINANCE', bankCheckMode: 'IN_FINANCE' }
+    try {
+      await PUT('/api/internal/admin/routes', { routes: [lowRisk, ...cfg.approvalRoutes], requesterReviewEnabled: false }, as('adam'))
+      const r = await submittedExample('in-finance')
+      let d = (await GET(`/api/internal/requests/${r.ID}`, as('fiona'))).data
+      assert.deepEqual(d.steps.map(s => s.code), ['FINANCE'])
+      assert.equal(d.allowed.bankCheck, true)
+      await POST(`/api/internal/requests/${r.ID}/simulate`, {}, as('fiona'))
+      await fails(POST(`/api/internal/requests/${r.ID}/approve`, {}, as('fiona')), 409, /call-back/)
+      await fails(POST(`/api/internal/requests/${r.ID}/bank-verification`, {}, as('ben')), 403)
+      const evidence = { numberCalled: '+35315550123', numberSource: 'INDEPENDENT_BANK', personSpokenTo: 'Route Tester', outcome: 'CONFIRMED' }
+      const R = require('../srv/lib/requests')
+      await cds.tx(() => R.recordBankVerification({ id: 'other.finance@jones.test', name: 'Other Finance', roles: ['VOB_FinancialController'] }, r.ID, evidence))
+      await fails(POST(`/api/internal/requests/${r.ID}/approve`, {}, as('fiona')), 409, /call-back/)
+      await POST(`/api/internal/requests/${r.ID}/bank-verification`, evidence, as('fiona'))
+      await POST(`/api/internal/requests/${r.ID}/send-back`, { message: 'Please update the bank details.', sections: ['bank'] }, as('fiona'))
+      // Configuration changes during return do not rewrite the stored route or requester flag.
+      await PUT('/api/internal/admin/routes', { routes: cfg.approvalRoutes, requesterReviewEnabled: true }, as('adam'))
+      const returned = await mail('sentBack')
+      const session = await vendorSession(returned.actionUrl)
+      await PUT('/api/portal/sections/bank', { data: { iban: V.makeIban('IE', 'BOFI90001777881234'), bic: 'BOFIIE2D' } }, session.h)
+      await POST('/api/portal/submit', { declarationName: 'Route Tester', accept: true }, session.h)
+      d = (await GET(`/api/internal/requests/${r.ID}`, as('fiona'))).data
+      assert.equal(d.request.status, 'PENDING_FINANCE')
+      assert.equal(d.route.name, 'Low-risk Finance')
+      assert.equal(d.request.round, 2)
+      assert.match(d.allowed.approveBlocker, /call-back/)
+      const process = (await GET('/api/process', session.h)).data
+      assert.equal(process.snapshot, true)
+      assert.equal(process.routes[0].bankCheckMode, 'IN_FINANCE')
+      await POST(`/api/internal/requests/${r.ID}/bank-verification`, evidence, as('fiona'))
+      await POST(`/api/internal/requests/${r.ID}/simulate`, {}, as('fiona'))
+      await POST(`/api/internal/requests/${r.ID}/approve`, {}, as('fiona'))
+      await require('../srv/lib/requests').idle()
+      assert.equal((await GET(`/api/internal/requests/${r.ID}`, as('fiona'))).data.request.status, 'CREATED')
+    } finally { await PUT('/api/internal/admin/routes', { routes: cfg.approvalRoutes, requesterReviewEnabled: true }, as('adam')) }
   })
 })

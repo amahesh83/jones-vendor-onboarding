@@ -144,18 +144,15 @@ flowchart TD
   C --> D["Vendor: guided form - autosave"]
   D --> E["Vendor: review, declaration, submit"]
   E --> F["System: validation + duplicate check vs SAP and open requests"]
-  F --> G["Requester review"]
-  G --> H["Purchasing Manager approval"]
-  H --> I{"Payment terms 30 days EOM?"}
-  I -- yes --> J["Procurement approval"]
-  I -- no --> K["Bank details call-back"]
-  J --> K
-  K --> L["Financial Controller: finance data + SAP simulation + approve"]
-  L --> M["System: create vendor in ECC"]
-  M --> N["Vendor number to requester and vendor; FIN-010 PDF attached in SAP"]
-  M -- "SAP error" --> X["Master data admin: fix and retry"]
+  F --> G["Resolve and save matching route"]
+  G --> H["Requester review if enabled"]
+  H --> J["Configured commercial approvals"]
+  J --> K["Separate bank call-back, or call-back within Finance"]
+  K --> L["Finance: simulation and final approval"]
+  L --> M["Create vendor in ECC"]
+  M --> N["Vendor number, notifications and FIN-010 attachments"]
+  M -- "SAP error" --> X["Admin: fix and retry"]
   X --> M
-  G -. "send back" .-> D
   H -. "send back" .-> D
   J -. "send back" .-> D
   K -. "send back" .-> D
@@ -166,9 +163,9 @@ flowchart TD
 1. **Invite vendor** button → a short dialog:
    - Required: company name, vendor contact name and email, account type, company code (IE01 default), payment terms (default from config), business reason / project.
    - **Account-type helper**: three plain questions that suggest the group, using the page-2 explanations: "Materials/equipment only?" → YBIV. "Labour only, under Jones supervision?" → YBSP. "An individual through their own limited company?" → YBCS. "Goods *and* labour, responsible for spec and quality?" → YBVE.
-   - **Payment terms are set by Jones, not chosen by the vendor.** 30 days EOM shows "needs Procurement approval".
+   - **Payment terms are set by Jones, not chosen by the vendor.** The route tester explains the configured approvals; the starting 30 EOM route includes Procurement.
 2. The vendor gets the invite. The requester sees the request in "My requests" with live status and can resend the invite, correct the email (before the vendor starts) or cancel.
-3. After the vendor submits, the requester does a quick **Requester review**: confirm account type, payment terms and currency; approve or send back.
+3. After submission, when requester review is enabled, the inviter does a quick **Requester review**: confirm account type, payment terms and currency; approve or send back.
 
 ### 5.2 Vendor
 1. **Invite email**: Jones-branded. Names the requester and the reference (e.g. `VOB-2026-00042`) and says how to check the email is genuine. Never asks for a password.
@@ -213,42 +210,51 @@ flowchart TD
 
 ## 6. Workflow
 
-### 6.1 Statuses
+[ADR-003](decisions/ADR-003-configurable-approval-routes.md) supersedes the original fixed approval chain. Admins configure routes; each request saves its route at the first submission.
 
-| Status | Meaning | Next |
-|---|---|---|
-| `INVITED` | Invite sent, vendor not started | `IN_PROGRESS`, `EXPIRED`, `CANCELLED` |
-| `IN_PROGRESS` | Vendor has started | `SUBMITTED`, `EXPIRED`, `CANCELLED` |
-| `SUBMITTED` | Automatic checks running (transient) | `PENDING_REQUESTER` |
-| `PENDING_REQUESTER` | Requester review | next approval, `RETURNED`, `REJECTED` |
-| `PENDING_PURCHASING` | Purchasing Manager | |
-| `PENDING_PROCUREMENT` | Only if payment terms need it (30 EOM) | |
-| `PENDING_BANK_CHECK` | Bank call-back | |
-| `PENDING_FINANCE` | Financial Controller | `CREATING` |
-| `RETURNED` | Sent back to vendor | `SUBMITTED` (restarts at `PENDING_REQUESTER`) |
-| `CREATING` | Queued / calling SAP | `CREATED`, `SAP_ERROR` |
-| `SAP_ERROR` | SAP refused or unreachable after retries | `CREATING` (retry), `REJECTED` |
-| `CREATED` | Vendor number stored (terminal) | |
-| `REJECTED`, `CANCELLED`, `EXPIRED` | Terminal | Requester may start a new invite |
+### 6.1 Statuses and route resolution
 
-### 6.2 Approval matrix
+| Status | Meaning / next |
+|---|---|
+| `INVITED`, `IN_PROGRESS` | Vendor opens the invitation, completes details and submits; invitations can expire or be cancelled |
+| `SUBMITTED` | Transient validation and duplicate checks; select the first active matching route by ascending priority (ID breaks ties) |
+| `PENDING_REQUESTER` | Inviter reviews first when the global requester-review setting is on (default) |
+| `PENDING_PURCHASING`, `PENDING_PROCUREMENT` | Commercial steps included only when present in the saved route |
+| `PENDING_BANK_CHECK` | Separate Bank verifier records a confirmed call-back before approval |
+| `PENDING_FINANCE` | Last step: finance settings, successful SAP simulation and final approval; IN_FINANCE also requires a confirmed call-back here |
+| `RETURNED` | Vendor fixes details and resubmits; restart every step of the same saved route, with a fresh call-back |
+| `CREATING`, `SAP_ERROR` | Transactional SAP creation queue; automatic transient retries, then administrator correction/retry |
+| `CREATED` | Vendor number stored; notifications and attachments |
+| `REJECTED`, `CANCELLED`, `EXPIRED` | Closed; requester can resend an expired invitation or start a new request |
 
-| Step | Role (role collection) | Does | Segregation of duties | SLA (reminder → escalation) |
-|---|---|---|---|---|
-| Requester review | `VOB_Requester` (the inviter) | Confirms account type, terms, currency | n/a | 2 → 5 working days |
-| Purchasing Manager | `VOB_PurchasingManager` | Commercial approval | ≠ requester | 2 → 5 |
-| Procurement (30 EOM only) | `VOB_ProcurementApprover` | Approves short terms (`Approved By` on the form) | ≠ requester | 2 → 5 |
-| Bank call-back | `VOB_BankVerifier` | Call-back, records evidence | ≠ requester; ≠ anyone who approved an earlier step on this request | 1 → 3 |
-| Financial Controller | `VOB_FinancialController` | Finance data, SAP simulation, final approval | ≠ requester; ≠ bank verifier | 2 → 5 |
-| SAP creation | system (technical user) | Creates vendor (`Created By` = system, on behalf of the approvers) | n/a | immediate |
-| Admin | `VOB_MasterDataAdmin` | Config, retries, reassignment | Cannot approve steps on requests they requested | n/a |
-| Read-only | `VOB_Auditor` | View everything, export | n/a | n/a |
+ApprovalRoutes stores priority, name, active, accountTypes, paymentTerms, companyCode, country, ordered steps and bankCheckMode. Values within a condition are alternatives; populated conditions must all match. Empty means any. An active conditionless default must always exist. Supported steps are REQUESTER, PURCHASING, PROCUREMENT, BANK_CHECK and FINANCE, with no duplicates and Finance last. Requester review is prepended globally when enabled, and removed when disabled.
 
-Rules:
-- One person can act on **at most one** step of a request.
-- On resubmission, **all** steps are collected again (simple and safe), with changed fields highlighted. Any bank change always requires a new call-back.
-- Steps are role pools, so any member can act. Notification recipients per role come from an admin-maintained directory (§8).
-- Order note: the PDF lists Financial Controller before Bank Confirmed. We put the **bank call-back before final approval**, so the last approval releases verified data straight to SAP (open question Q9).
+| Priority | Starting route | Condition | Steps after requester review |
+|---|---|---|---|
+| 10 | Sub-contractors | YBCS, YBSP or YBVE | Procurement → Bank call-back → Finance |
+| 20 | Short payment terms | 30EOM | Procurement → Bank call-back → Finance |
+| 99 | Default | Any | Bank call-back → Finance |
+
+The default route has one business approval (Finance), alongside requester review and independent bank verification. Sub-contractors and short terms have two (Procurement and Finance). Purchasing remains available for routes an admin explicitly configures.
+
+### 6.2 Roles, bank modes and controls
+
+| Step | Role collection | Responsibility | Reminder → escalation |
+|---|---|---|---|
+| Requester review | `VOB_Requester` (inviter only) | Business need, type, terms, currency | 2 → 5 working days |
+| Purchasing | `VOB_PurchasingManager` | Commercial review when configured | 2 → 5 |
+| Procurement | `VOB_ProcurementApprover` | Supplier/terms review when configured | 2 → 5 |
+| Bank call-back | `VOB_BankVerifier` | Independent call, evidence and confirmation | 1 → 3 |
+| Finance | `VOB_FinancialController` | Finance data, SAP simulation and final approval | 2 → 5 |
+| Admin / Auditor | `VOB_MasterDataAdmin` / `VOB_Auditor` | Configuration and error recovery / read-only oversight | n/a |
+
+- SEPARATE is the default. Bank verification precedes Finance, performed by a different person.
+- IN_FINANCE is a per-route option for low-risk vendors: no separate BANK_CHECK step. Finance sees the call-back panel and cannot approve without confirmed evidence for the current submission/bank account. The editor warns that this removes the two-person bank check.
+- The requester never acts on a later step, even if requester review is disabled. One person can act on only one step per submission round. Role pools and the approver directory determine recipients.
+- Every resubmission restarts the saved route and invalidates old-round call-backs. Bank changes after send-back always need a new call-back.
+- The snapshot includes step order, roles, labels, bank mode and reminder/escalation targets. Later configuration changes cannot reroute in-flight requests, including resubmissions. Legacy requests with no snapshot retain their original chain.
+- Progress, task/reminder emails, What happens next, the request-specific How it works page and FIN-010 use that snapshot. Staff see **Route: … → …**. Generic How it works shows current configured routes; vendor status uses plain-language saved stages.
+- Admin route cards provide condition checkboxes, editable ordered step chips, a requester-review toggle, validation and a tester for unsaved rules. Saving an invalid/defaultless route set is refused transactionally.
 
 ### 6.3 Automatic checks at submission (and again before creation)
 - All field validation, re-run server-side.
@@ -289,7 +295,7 @@ Codex must keep the SAP targets **configurable** where marked ⚙. Items marked 
 | `Bank Name`, `Bank Address` | Bank name and address | Required | `BNKA` (bank master); the API may create a missing bank (⚙, Q7) | |
 | — | Account holder name | Default = company name | `LFBK-KOINH` | New; protects against mismatched accounts |
 | `Contact Name`, `Contact Phone No` | Bank-details contact | Required | Not in SAP; used by the bank call-back | |
-| 30/60/90 Days EOM | Set by requester | 30 EOM → Procurement step | `LFB1-ZTERM`, `LFM1-ZTERM` (keys ⚙, Q1) | |
+| 30/60/90 Days EOM | Set by requester | Route conditions determine approvals (seed: 30 EOM → Procurement) | `LFB1-ZTERM`, `LFM1-ZTERM` (keys ⚙, Q1) | |
 | Euro/GBP/USD/Other | Trading currency | ISO 4217 list (default by country) | `LFM1-WAERS` | "Other" becomes a proper dropdown |
 | Sub-contractor documents | Uploads per config | Required for YBCS/YBSP/YBVE (⚙, Q11) | GOS attachments on `LFA1` | |
 | Vendor print name / signature / date | Declaration: tick + typed name; date and IP recorded | Required | n/a (stored in the app and the PDF) | |
@@ -310,12 +316,13 @@ Codex must keep the SAP targets **configurable** where marked ⚙. Items marked 
 |---|---|
 | Company codes | IE01 (H. A. O'Neil Limited): purchasing org ⚙, active flag. Others (GB01…) added later |
 | Account types | Code, label, help text, sub-contractor flag, required documents, default reconciliation account per company code, default WHT type |
-| Payment terms | `30EOM`/`60EOM`/`90EOM` → SAP `ZTERM` per company code; `requiresProcurementApproval` |
+| Payment terms | `30EOM`/`60EOM`/`90EOM` → SAP `ZTERM` per company code; approvals now come from ApprovalRoutes |
 | Currencies | ISO list; default per country |
 | Document types | Bank letter (all), tax clearance, insurance, safety statement, RCT1 (Q11), sub-contract agreement; required per account type; needs a valid-until date |
 | Withholding tax | Per company code + country + account type: WHT type and allowed codes (e.g. RCT 0/20/35 %) |
+| Approval routes | Priority, conditions, ordered steps, active flag, bank-check mode; see §6 and ADR-003 |
 | Approver directory | Role → notification email list |
-| Settings | Invite expiry (30 days), reminder days, escalation days, OTP lifetime, retention, sender address, portal base URL, feature flags |
+| Settings | Invite expiry (30 days), reminder days, escalation days, OTP lifetime, retention, sender address, portal base URL, feature flags, requesterReviewEnabled (default true) |
 
 ---
 

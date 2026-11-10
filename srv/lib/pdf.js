@@ -81,13 +81,14 @@ async function buildFin010 (data) {
   text('Vendor Print Name', r.declarationName)
   text('Completed On Date_af_date', fmtDate(r.declarationAt))
 
-  const decision = step => (data.decisions || []).filter(d => d.step === step && d.decision === 'APPROVED').sort((a, b) => String(b.decidedAt).localeCompare(String(a.decidedAt)))[0]
+  const decision = step => (data.decisions || []).filter(d => d.step === step && d.decision === 'APPROVED' && d.round === r.round).sort((a, b) => String(b.decidedAt).localeCompare(String(a.decidedAt)))[0]
   const procurement = decision('PROCUREMENT')
   if (procurement) text('Approved By', procurement.userName)
   const requester = decision('REQUESTER')
   text('Requested By', r.requesterName)
   text('Date 1', fmtDate(requester?.decidedAt || r.createdAt))
-  const pm = decision('PURCHASING'), fc = decision('FINANCE'), bank = decision('BANK_CHECK')
+  const pm = decision('PURCHASING'), fc = decision('FINANCE')
+  const bank = decision('BANK_CHECK') || (data.bankCheck?.outcome === 'CONFIRMED' ? { userName: data.bankCheck.userName, decidedAt: data.bankCheck.recordedAt } : null)
   text('Date 2', fmtDate(pm?.decidedAt))
   text('Date 3', fmtDate(fc?.decidedAt))
   text('Date 4', fmtDate(bank?.decidedAt))
@@ -146,6 +147,9 @@ async function buildFin010 (data) {
   line(`Request ${r.requestNumber} - ${r.companyName}`, { bold: true, size: 11 })
   line(`Company code ${r.companyCode} | Account group ${r.accountType} | Payment terms ${r.paymentTerms} | Currency ${r.currency}`)
   line(`SAP vendor number: ${r.sapVendorNumber || 'not created yet'} | Generated ${fmtDateTime(new Date())}`)
+  const route = require('./workflow').routeFor(r)
+  line(`Route: ${route.name} - ${route.steps.map(s => s.label).join(' -> ')}`, { bold: true })
+  line(`Bank call-back: ${route.bankCheckMode === 'IN_FINANCE' ? 'recorded within the Finance step (one-person bank/finance check)' : 'separate Bank verifier before Finance'}`)
   line('This form was completed online by the vendor and approved electronically in Jones Vendor Onboarding. Each approval below was made by a signed-in user; the vendor confirmed their identity with a one-time code sent to their email.', { size: 8.5 })
   y -= 6
   line('Approvals', { bold: true, size: 11 })

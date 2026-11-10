@@ -11,6 +11,7 @@ const path = require('path')
 const { isProduction } = require('./srv/lib/util')
 
 const LOG = cds.log('vob')
+let ready = false
 
 function securityHeaders (req, res, next) {
   if (req.path.startsWith('/.cap') || req.path.startsWith('/$fiori') || req.path.startsWith('/odata')) return next()
@@ -39,13 +40,26 @@ cds.on('bootstrap', app => {
     app.use('/api/dev', json, dev)
     LOG.info('Development helpers enabled: persona login and mailbox at /api/dev')
   }
-  app.get('/api/health', (req, res) => res.json({ status: 'UP' }))
+  app.get('/api/health', (req, res) => res.status(ready ? 200 : 503).json({ status: ready ? 'UP' : 'STARTING' }))
+  app.get('/api/process', require('./srv/routes/http').handle(async req => {
+    const R = require('./srv/lib/requests'), W = require('./srv/lib/workflow')
+    const session = await require('./srv/lib/portal-auth').session(req, { mutating: false })
+    if (session?.request.routeSnapshot) return { snapshot: true, routes: [W.routeFor(session.request)] }
+    const cfg = await R.config()
+    const A = require('./srv/lib/approval-routes')
+    const enabled = String(cfg.settings.requesterReviewEnabled ?? 'true') !== 'false'
+    return { snapshot: false, routes: cfg.approvalRoutes.filter(r => r.active).map(r => ({
+      name: r.name, priority: r.priority, bankCheckMode: r.bankCheckMode,
+      when: [r.accountTypes && `account types ${r.accountTypes}`, r.paymentTerms && `payment terms ${r.paymentTerms}`, r.companyCode && `company ${r.companyCode}`, r.country && `country ${r.country}`].filter(Boolean).join('; ') || 'Any vendor (default)',
+      steps: [...(enabled ? ['REQUESTER'] : []), ...A.values(r.steps).filter(s => s !== 'REQUESTER')].map(code => {
+        const s = W.STEPS.find(s => s.code === code)
+        return { ...s, reminderDays: Number(cfg.settings[s.remind] || (code === 'BANK_CHECK' ? 1 : 2)), escalationDays: Number(cfg.settings[s.escalate] || (code === 'BANK_CHECK' ? 3 : 5)) }
+      }),
+    })) }
+  }))
 })
 
 cds.on('served', async () => {
-  if (cds.env.requires?.vob?.demoData && !isProduction()) {
-    try { await require('./srv/lib/demo').seed() } catch (e) { LOG.error('Demo data failed', e) }
-  }
   const every = cds.env.requires?.vob?.jobMinutes
   if (every) {
     const R = require('./srv/lib/requests')
@@ -55,6 +69,18 @@ cds.on('served', async () => {
     }, every * 60000)
     timer.unref()
   }
+})
+
+cds.on('listening', async () => {
+  // Queue workers use unref timers: the HTTP server must exist before seeding awaits them.
+  try {
+    if (cds.env.requires?.vob?.demoData && !isProduction()) await require('./srv/lib/demo').seed()
+    await require('./srv/lib/sap/creation-queue').flush()
+    const worker = setInterval(() => require('./srv/lib/sap/creation-queue').flush().catch(e => LOG.error('SAP worker failed', e)), 1000)
+    worker.unref()
+    cds.on('shutdown', () => clearInterval(worker))
+    ready = true
+  } catch (e) { LOG.error('Startup recovery failed', e) }
 })
 
 module.exports = cds.server

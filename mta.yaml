@@ -8,7 +8,7 @@ build-parameters:
   before-all:
     - builder: custom
       commands:
-        - npx cds build --production
+        - npm run build:cap
 
 modules:
   - name: vob-srv
@@ -32,6 +32,7 @@ modules:
       - name: vob-destination
       - name: vob-connectivity
       - name: vob-malware-scanner
+      - name: vob-audit-log
 
   - name: vob-db-deployer
     type: hdb
@@ -57,6 +58,10 @@ modules:
           forwardAuthToken: true
 
 resources:
+  - name: vob-audit-log
+    type: org.cloudfoundry.existing-service
+    parameters:
+      service-name: vob-audit-log
   - name: vob-db
     type: com.sap.xs.hdi-container
     parameters:

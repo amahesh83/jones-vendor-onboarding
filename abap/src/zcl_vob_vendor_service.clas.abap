@@ -85,23 +85,36 @@ CLASS zcl_vob_vendor_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD duplicates.
-    DATA ls_q TYPE ty_payload-central.
-    DATA lv_iban TYPE iban.
-    /ui2/cl_json=>deserialize( EXPORTING json = iv_json pretty_name = /ui2/cl_json=>pretty_mode-camel_case CHANGING data = ls_q ).
-    " VERIFY IN DEV: field names in the query JSON are vatNumber / iban / name / postCode (flat), see srv/lib/sap/http.js
-    IF ls_q-vat_number IS NOT INITIAL.
-      SELECT lifnr, name1, ort01 FROM lfa1 WHERE stceg = @ls_q-vat_number AND loevm = @abap_false INTO TABLE @DATA(lt_vat) UP TO 20 ROWS.
-      LOOP AT lt_vat INTO DATA(ls_v).
-        APPEND VALUE #( vendor_number = ls_v-lifnr name = ls_v-name1 city = ls_v-ort01 matched_on = VALUE #( ( `VAT` ) ) blocked = abap_true ) TO rs_dup-matches.
-      ENDLOOP.
-    ENDIF.
-    " IBAN: TIBAN holds IBAN per bank country/key/account; LFBK links the vendor. VERIFY IN DEV
+    DATA ls_query TYPE zif_vob_duplicate_store=>ty_query.
+    /ui2/cl_json=>deserialize( EXPORTING json = iv_json pretty_name = /ui2/cl_json=>pretty_mode-camel_case CHANGING data = ls_query ).
+    DATA(lo_check) = NEW zcl_vob_duplicate_check( ).
+    rs_dup-matches = CORRESPONDING #( lo_check->check( ls_query ) ).
   ENDMETHOD.
 
   METHOD create_vendor.
     DATA ls_p TYPE ty_payload.
     /ui2/cl_json=>deserialize( EXPORTING json = iv_json pretty_name = /ui2/cl_json=>pretty_mode-camel_case CHANGING data = ls_p ).
 
+    IF ls_p-request_id IS INITIAL OR ls_p-company_code <> 'IE01'
+      OR ( ls_p-account_group <> 'YBIV' AND ls_p-account_group <> 'YBCS'
+       AND ls_p-account_group <> 'YBSP' AND ls_p-account_group <> 'YBVE' ).
+      rs_result-has_errors = abap_true.
+      rs_result-result = 'ERROR'.
+      APPEND VALUE #( type = 'E' text = 'Request ID, IE01 and an allowed account group are required.' ) TO rs_result-messages.
+      RETURN.
+    ENDIF.
+    " VERIFY IN DEV: generic ENQUEUE_E_TABLE lock key layout and scope for ZVOB_REQLOG.
+    DATA lv_lock_key TYPE rstable-varkey.
+    CONCATENATE sy-mandt ls_p-request_id INTO lv_lock_key.
+    CALL FUNCTION 'ENQUEUE_E_TABLE'
+      EXPORTING tabname = 'ZVOB_REQLOG' varkey = lv_lock_key
+      EXCEPTIONS foreign_lock = 1 system_failure = 2 OTHERS = 3.
+    IF sy-subrc <> 0.
+      rs_result-has_errors = abap_true.
+      rs_result-result = 'ERROR'.
+      APPEND VALUE #( type = 'E' text = 'This request is already being processed. Please retry.' ) TO rs_result-messages.
+      RETURN.
+    ENDIF.
     " Idempotency: one vendor per request id, ever.
     SELECT SINGLE lifnr FROM zvob_reqlog WHERE request_id = @ls_p-request_id AND status = 'CREATED' INTO @DATA(lv_existing).
     IF sy-subrc = 0 AND ls_p-test_run = abap_false.
@@ -153,13 +166,26 @@ CLASS zcl_vob_vendor_service IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    COMMIT WORK AND WAIT.
     READ TABLE ls_correct-vendors INTO DATA(ls_vendor) INDEX 1.   " VERIFY IN DEV: header-object_instance-lifnr
     rs_result-vendor_number = ls_vendor-header-object_instance-lifnr.
+    IF rs_result-vendor_number IS INITIAL.
+      ROLLBACK WORK.
+      rs_result-has_errors = abap_true.
+      rs_result-result = 'ERROR'.
+      APPEND VALUE #( type = 'E' text = 'SAP did not return a vendor number. Nothing was committed.' ) TO rs_result-messages.
+      RETURN.
+    ENDIF.
     rs_result-result = 'CREATED'.
     INSERT zvob_reqlog FROM @( VALUE #( request_id = ls_p-request_id lifnr = rs_result-vendor_number status = 'CREATED'
                                          created_by = sy-uname created_on = sy-datum created_at = sy-uzeit ) ).
-    COMMIT WORK.
+    IF sy-subrc <> 0.
+      ROLLBACK WORK.
+      rs_result-has_errors = abap_true.
+      rs_result-result = 'ERROR'.
+      APPEND VALUE #( type = 'E' text = 'Could not save the idempotency record. Nothing was committed.' ) TO rs_result-messages.
+      RETURN.
+    ENDIF.
+    COMMIT WORK AND WAIT.
   ENDMETHOD.
 
   METHOD map_to_vmds.
@@ -239,11 +265,71 @@ CLASS zcl_vob_vendor_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD add_attachment.
-    " GOS attachment on business object LFA1:
-    " SO_FOLDER_ROOT_ID_GET + SO_DOCUMENT_INSERT_API1 + BINARY_RELATION_CREATE_COMMIT (relation ATTA).
-    " Implement in DEV following SAP note-free standard pattern; kept as a stub so the API contract is testable.
-    rs_result-result = 'NOT_IMPLEMENTED'.
-    APPEND VALUE #( type = 'W' text = |Attachment for { iv_lifnr } not stored yet: GOS implementation pending (VERIFY IN DEV)| ) TO rs_result-messages.
+    " VERIFY IN DEV: SAPoffice API structures and GOS LFA1 object key convention.
+    TYPES: BEGIN OF ty_attachment,
+             file_name TYPE string, mime_type TYPE string, content_base64 TYPE string,
+           END OF ty_attachment.
+    DATA ls_input TYPE ty_attachment.
+    DATA lv_binary TYPE xstring.
+    DATA lt_binary TYPE solix_tab.
+    DATA lt_headers TYPE STANDARD TABLE OF soli WITH DEFAULT KEY.
+    DATA ls_folder TYPE soodk.
+    DATA ls_document TYPE sodocchgi1.
+    DATA ls_info TYPE sofolenti1.
+    DATA ls_vendor TYPE borident.
+    DATA ls_object TYPE borident.
+    /ui2/cl_json=>deserialize( EXPORTING json = iv_json pretty_name = /ui2/cl_json=>pretty_mode-camel_case CHANGING data = ls_input ).
+    IF ls_input-content_base64 IS INITIAL OR ls_input-file_name IS INITIAL.
+      rs_result-has_errors = abap_true.
+      rs_result-result = 'ERROR'.
+      RETURN.
+    ENDIF.
+    CALL FUNCTION 'SCMS_BASE64_DECODE_STR'
+      EXPORTING input = ls_input-content_base64 IMPORTING output = lv_binary
+      EXCEPTIONS failed = 1 OTHERS = 2.
+    IF sy-subrc <> 0 OR xstrlen( lv_binary ) > 10485760.
+      rs_result-has_errors = abap_true.
+      rs_result-result = 'ERROR'.
+      RETURN.
+    ENDIF.
+    CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
+      EXPORTING buffer = lv_binary TABLES binary_tab = lt_binary.
+    CALL FUNCTION 'SO_FOLDER_ROOT_ID_GET'
+      EXPORTING region = 'B' IMPORTING folder_id = ls_folder
+      EXCEPTIONS OTHERS = 1.
+    IF sy-subrc <> 0.
+      rs_result-has_errors = abap_true.
+      rs_result-result = 'ERROR'.
+      RETURN.
+    ENDIF.
+    ls_document-obj_descr = ls_input-file_name.
+    ls_document-obj_langu = sy-langu.
+    ls_document-objlen = xstrlen( lv_binary ).
+    APPEND VALUE #( line = |&SO_FILENAME={ ls_input-file_name }| ) TO lt_headers.
+    APPEND VALUE #( line = '&SO_FORMAT=BIN' ) TO lt_headers.
+    CALL FUNCTION 'SO_DOCUMENT_INSERT_API1'
+      EXPORTING folder_id = ls_folder document_data = ls_document document_type = 'EXT'
+      IMPORTING document_info = ls_info
+      TABLES object_header = lt_headers contents_hex = lt_binary
+      EXCEPTIONS OTHERS = 1.
+    IF sy-subrc <> 0.
+      ROLLBACK WORK.
+      rs_result-has_errors = abap_true.
+      rs_result-result = 'ERROR'.
+      RETURN.
+    ENDIF.
+    ls_vendor-objtype = 'LFA1'.
+    ls_vendor-objkey = iv_lifnr.
+    ls_object-objtype = 'MESSAGE'.
+    ls_object-objkey = ls_info-doc_id.
+    CALL FUNCTION 'BINARY_RELATION_CREATE_COMMIT'
+      EXPORTING obj_rolea = ls_vendor obj_roleb = ls_object relationtype = 'ATTA'
+      EXCEPTIONS OTHERS = 1.
+    rs_result-has_errors = xsdbool( sy-subrc <> 0 ).
+    rs_result-result = COND #( WHEN rs_result-has_errors = abap_true THEN 'ERROR' ELSE 'ATTACHED' ).
+    rs_result-vendor_number = iv_lifnr.
+    APPEND VALUE #( type = COND #( WHEN rs_result-has_errors = abap_true THEN 'E' ELSE 'S' )
+      text = COND #( WHEN rs_result-has_errors = abap_true THEN 'GOS attachment failed.' ELSE 'Document attached.' ) ) TO rs_result-messages.
   ENDMETHOD.
 
 ENDCLASS.

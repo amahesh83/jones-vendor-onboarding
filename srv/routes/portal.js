@@ -8,6 +8,11 @@ const { fail } = require('../lib/util')
 const { handle, sendError, rateLimit, clientIp } = require('./http')
 
 const router = express.Router()
+router.post('/demo-fill', handle(async req => {
+  require('../lib/demo-examples').assertEnabled()
+  const s = await withSession(req, true)
+  return require('../lib/demo-examples').fill(s.request, req.body?.section, req.body || {})
+}))
 const limiter = rateLimit({ windowMs: 10 * 60000, max: 30, key: clientIp })
 
 async function withSession (req, mutating) {

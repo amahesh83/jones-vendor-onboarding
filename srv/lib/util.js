@@ -78,6 +78,17 @@ async function audit (requestId, actor, event, message, details) {
     message,
     details: details ? JSON.stringify(details) : null,
   })
+  // Express routes bypass CAP's automatic service-level personal-data handlers.
+  // Explicitly log sensitive bank reads, with field names only (never bank values).
+  if (event === 'BANK_DATA_VIEWED') {
+    const auditLog = await cds.connect.to('audit-log')
+    await auditLog.log('SensitiveDataRead', {
+      user: actor.id,
+      data_subject: { type: 'jones.vob.VendorRequests', role: 'Vendor', id: { ID: requestId } },
+      object: { type: 'jones.vob.VendorRequests', id: { ID: requestId } },
+      attributes: ['iban', 'bankAccountNo', 'sortCode'].map(name => ({ name })),
+    })
+  }
 }
 
 const SYSTEM = { type: 'SYSTEM', id: 'system', name: 'System' }

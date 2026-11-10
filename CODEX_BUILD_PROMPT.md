@@ -1,3 +1,5 @@
+> **ADR-003 supersession (2026-11-10):** Approval routes are configurable and snapshotted at submission. The old fixed-chain references below are superseded by [ADR-003](docs/decisions/ADR-003-configurable-approval-routes.md) and design §6. ADR-002 supersedes UI5/Fiori implementation details. Keep the 13 acceptance scenarios, adapting expected steps to the saved route.
+
 # Codex build prompt: Jones Vendor Onboarding (VOB) v1
 
 > Paste everything inside the fenced block below into Codex, opened on this folder.

@@ -62,16 +62,34 @@
   }
 
   function modal (content, { wide = false, onClose } = {}) {
+    const previousFocus = document.activeElement
     const back = document.createElement('div')
     back.className = 'modal-back'
-    back.innerHTML = `<div class="modal ${wide ? 'wide' : ''}" role="dialog" aria-modal="true">${content}</div>`
-    const close = () => { back.remove(); document.removeEventListener('keydown', key); onClose && onClose() }
-    const key = e => { if (e.key === 'Escape') close() }
+    back.innerHTML = `<div class="modal ${wide ? 'wide' : ''}" role="dialog" aria-modal="true" tabindex="-1">${content}</div>`
+    const title = back.querySelector('h1,h2,h3')
+    if (title) { title.id = 'dialog-title'; back.firstElementChild.setAttribute('aria-labelledby', title.id) }
+    const siblings = [...document.body.children].filter(el => !el.inert && !['SCRIPT', 'STYLE'].includes(el.tagName))
+    siblings.forEach(el => { el.inert = true })
+    const close = () => {
+      back.remove(); siblings.forEach(el => { el.inert = false })
+      document.removeEventListener('keydown', key)
+      if (previousFocus?.isConnected) previousFocus.focus()
+      onClose && onClose()
+    }
+    const key = e => {
+      if (e.key === 'Escape') close()
+      if (e.key !== 'Tab') return
+      const items = [...back.querySelectorAll('a[href],button,input,select,textarea,[tabindex="0"]')].filter(el => !el.disabled && el.getClientRects().length)
+      const first = items[0], last = items.at(-1)
+      if (!first) { e.preventDefault(); back.firstElementChild.focus(); return }
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === back.firstElementChild)) { e.preventDefault(); last.focus() }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+    }
     back.addEventListener('mousedown', e => { if (e.target === back) close() })
     document.addEventListener('keydown', key)
     document.body.appendChild(back)
     back.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', close))
-    setTimeout(() => back.querySelector('input,select,textarea,button')?.focus(), 30)
+    setTimeout(() => (back.querySelector('input,select,textarea,button') || back.firstElementChild).focus(), 30)
     return { el: back.firstElementChild, close }
   }
 

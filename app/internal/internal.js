@@ -37,7 +37,7 @@
 
   function renderWho () {
     const p = PERSONAS.find(x => x.id === ME.id)
-    $('#who').innerHTML = html`<button class="persona" id="whoBtn" type="button" aria-haspopup="true">${p ? html`<span class="avatar" style="background:${p.color}">${p.emoji}</span>` : avatar(ME.name)}<span class="hide-sm" style="text-align:left;line-height:1.15"><b style="font-size:.88rem">${ME.name}</b><br><span class="small muted">${ME.roleLabels.join(', ')}</span></span>${DEV ? ' ▾' : ''}</button>`
+    $('#who').innerHTML = html`<button class="persona" id="whoBtn" aria-label="Current user: ${ME.name}. Switch demo persona" type="button" aria-haspopup="true">${p ? html`<span class="avatar" style="background:${p.color}">${p.emoji}</span>` : avatar(ME.name)}<span class="hide-sm" style="text-align:left;line-height:1.15"><b style="font-size:.88rem">${ME.name}</b><br><span class="small muted">${ME.roleLabels.join(', ')}</span></span>${DEV ? ' ▾' : ''}</button>`
     if (DEV) $('#whoBtn').onclick = () => pickPersona(false)
   }
 
@@ -95,7 +95,7 @@
           <a class="card kpi" href="#/requests?view=created"><span class="emoji" style="background:var(--ok-soft);color:var(--ok)">${I('sparkles')}</span><div class="lbl">Created this month</div><div class="num">${c.createdThisMonth}</div></a>
           <div class="card kpi"><span class="emoji">${I('clock')}</span><div class="lbl">Avg days to create</div><div class="num">${c.avgDaysToCreate ?? '–'}</div></div>
         </div>
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr));margin-top:16px">
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));margin-top:16px">
           <div class="card">
             <div class="row between"><div class="section-title" style="margin:0">${bubble('target')}<h2 style="margin:0">Waiting for you</h2></div><a href="#/requests?view=waiting" class="small">See all</a></div>
             <div class="stack" style="margin-top:14px">${d.waiting.length ? d.waiting.map(r => rowCard(r)) : html`<div class="empty"><div class="art">🏖️</div>All clear! Nothing needs you right now.</div>`}</div>
@@ -126,7 +126,7 @@
     const views = [['waiting', '🎯 Waiting for me'], ['mine', '🙋 My requests'], ['open', '📂 All open'], ['created', '🎉 Created'], ['closed', '🗄️ Rejected / expired'], ['all', 'Everything']]
     app.innerHTML = html`<div class="wrap" style="padding-top:26px">
       <div class="row between" style="margin-bottom:14px"><h1 style="margin:0">Requests</h1>
-        <div class="row"><input id="q" type="search" placeholder="🔎 Search company, reference, email…" value="${q}" style="width:300px;max-width:70vw"><a class="btn btn-line btn-sm" id="csv" href="/api/internal/requests/export.csv?view=${view}">⬇ Excel (CSV)</a></div></div>
+        <div class="row"><input id="q" aria-label="Search requests" type="search" placeholder="🔎 Search company, reference, email…" value="${q}" style="width:300px;max-width:70vw"><a class="btn btn-line btn-sm" id="csv" href="/api/internal/requests/export.csv?view=${view}">⬇ Excel (CSV)</a></div></div>
       <div class="seg" style="margin-bottom:16px">${views.map(([k, l]) => html`<button class="${k === view ? 'on' : ''}" data-v="${k}" type="button">${l}</button>`)}</div>
       <div class="card" style="padding:6px 6px 2px" id="tbl"><div class="skeleton" style="height:200px"></div></div></div>`
     $$('[data-v]').forEach(b => { b.onclick = () => { location.hash = `#/requests?view=${b.dataset.v}${$('#q').value ? '&q=' + encodeURIComponent($('#q').value) : ''}` } })
@@ -180,13 +180,15 @@
         </div>
       </div></section>
       <div class="wrap fade-in" style="padding-bottom:30px">
-        <div class="card" style="margin-bottom:16px"><div class="track">
+        <div class="card" style="margin-bottom:16px"><div class="track" tabindex="0" role="region" aria-label="Onboarding progress">
           <div class="st ${r.round > 0 ? 'done' : ['INVITED', 'IN_PROGRESS', 'RETURNED'].includes(r.status) ? 'current' : ''}"><div class="b">${r.round > 0 && r.status !== 'RETURNED' ? '✓' : '✍️'}</div><div class="l">Vendor</div><div class="s">${r.submittedAt ? 'Submitted ' + fmtDate(r.submittedAt) : r.status === 'INVITED' ? 'Invited' : r.status === 'RETURNED' ? 'Making changes' : 'Filling in'}</div></div>
           ${d.steps.map(s => html`<div class="st ${s.state}"><div class="b">${s.state === 'done' ? '✓' : STEP_ICON[s.code]}</div><div class="l">${s.short}</div><div class="s">${s.by ? html`${s.by}<br>${fmtDate(s.at)}` : s.state === 'current' ? 'Now' : ''}</div></div>`)}
           <div class="st ${r.status === 'CREATED' ? 'done' : ['CREATING', 'SAP_ERROR'].includes(r.status) ? 'current' : ''}"><div class="b">${r.status === 'CREATED' ? '✓' : r.status === 'SAP_ERROR' ? '🚨' : '⚙️'}</div><div class="l">SAP</div><div class="s">${r.sapVendorNumber || (r.status === 'SAP_ERROR' ? 'Error' : r.status === 'CREATING' ? 'Creating…' : '')}</div></div>
         </div></div>
 
         <div class="stack" id="banners">
+          <div class="card flat"><b>Route: ${d.route.summary}</b><div class="small muted">${d.route.name} · ${d.route.bankCheckMode === 'IN_FINANCE' ? 'Bank call-back inside Finance' : 'Separate bank verification'}. ${d.route.saved ? 'Saved at submission; configuration changes do not alter this request.' : 'Preview only; the matching route is saved when the vendor submits.'}</div></div>
+          <div class="next-step"><b>What happens next</b><p>${d.nextAction}</p><a href="/how-it-works.html?request=${id}">See this route and usual times →</a></div>
           ${r.status === 'CREATING' ? html`<div class="banner info"><span class="i">⚙️</span><div>Creating the vendor in SAP… this page refreshes by itself.</div></div>` : ''}
           ${sapErr ? html`<div class="banner bad"><span class="i">🚨</span><div><b>SAP could not create this vendor.</b> ${sapErr.plain}<details class="small"><summary>Technical details</summary><pre class="mono small" style="white-space:pre-wrap">${JSON.stringify(sapErr.messages, null, 2)}</pre></details></div></div>` : ''}
           ${a.why && r.currentStep ? html`<div class="banner info"><span class="i">🔒</span><div>${a.why}</div></div>` : ''}
@@ -199,14 +201,14 @@
           ${r.status === 'REJECTED' ? html`<div class="banner bad"><span class="i">⛔</span><div><b>Rejected:</b> ${r.rejectReason}</div></div>` : ''}
         </div>
 
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr));margin-top:16px;align-items:start">
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));margin-top:16px;align-items:start">
           <div class="stack">
             ${a.bankCheck ? bankPanel(d, lastBank) : ''}
             ${a.finance || a.simulate ? financePanel(d, sim) : ''}
-            ${a.justify ? html`<div class="card" style="border:2px solid var(--warn)"><h3>📝 Why is a new vendor needed?</h3><p class="small muted">An active SAP vendor has the same VAT number or IBAN. Explain why this isn't a duplicate (for example, a separate legal entity).</p><textarea id="justText" placeholder="e.g. Different legal entity: the SAP vendor is the UK sister company"></textarea><button class="btn btn-warn" id="justBtn" style="margin-top:10px">Record justification</button></div>` : ''}
+            ${a.justify ? html`<div class="card" style="border:2px solid var(--warn)"><h3>📝 Why is a new vendor needed?</h3><p class="small muted">An active SAP vendor has the same VAT number or IBAN. Explain why this isn't a duplicate (for example, a separate legal entity).</p><textarea id="justText" aria-label="Why a new vendor is needed" placeholder="e.g. Different legal entity: the SAP vendor is the UK sister company"></textarea><button class="btn btn-warn" id="justBtn" style="margin-top:10px">Record justification</button></div>` : ''}
             ${a.requesterEdit ? html`<div class="card" style="border:2px solid var(--brand)"><h3>🙋 Your review</h3><p class="small muted">Confirm the account type, payment terms and currency the vendor will get. You can change them here before approving.</p>
               <div class="form-grid"><div class="field"><label for="rvType">Account type</label><select id="rvType">${d.options.accountTypes.map(o => html`<option value="${o.code}" ${o.code === r.accountType ? raw('selected') : ''}>${o.label} (${o.code})</option>`)}</select></div>
-              <div class="field"><label for="rvTerms">Payment terms</label><select id="rvTerms">${d.options.paymentTerms.map(o => html`<option value="${o.code}" ${o.code === r.paymentTerms ? raw('selected') : ''}>${o.label}${o.requiresProcurement ? ' (needs Procurement)' : ''}</option>`)}</select></div>
+              <div class="field"><label for="rvTerms">Payment terms</label><select id="rvTerms">${d.options.paymentTerms.map(o => html`<option value="${o.code}" ${o.code === r.paymentTerms ? raw('selected') : ''}>${o.label}</option>`)}</select></div>
               <div class="field"><label for="rvCur">Currency</label><select id="rvCur">${d.options.currencies.map(o => html`<option value="${o.code}" ${o.code === r.currency ? raw('selected') : ''}>${o.code} · ${o.name}</option>`)}</select></div></div></div>` : ''}
 
             <div class="card"><div class="section-title">${bubble('building')}<h3 style="margin:0">Company</h3></div><dl class="kv">${section('company')}</dl></div>
@@ -271,7 +273,7 @@
     return html`<div class="card" style="border:2px solid var(--warn)">
       <div class="section-title">${bubble('phone', 'warn')}<div><h3 style="margin:0">Bank details call-back</h3><div class="small muted">Phone the vendor to confirm the bank details before anyone can pay them.</div></div></div>
       <div class="banner info small" style="margin-bottom:12px"><span class="i">💡</span><div>Use an <b>independent</b> number where possible (from the bank, the vendor's website or an existing record), not only the number on the form. The vendor gave: <b>${o.vendorContact}</b>, ${o.vendorPhone}.</div></div>
-      ${last ? html`<div class="banner ${last.outcome === 'CONFIRMED' ? 'ok' : 'bad'} small" style="margin-bottom:12px"><span class="i">${last.outcome === 'CONFIRMED' ? '✅' : '❌'}</span><div>Last call: ${last.outcome === 'CONFIRMED' ? 'confirmed' : 'not confirmed'} by ${last.userName}. ${last.outcome === 'CONFIRMED' ? 'You can approve this step now.' : ''}</div></div>` : ''}
+      ${last ? html`<div class="banner ${last.outcome === 'CONFIRMED' ? 'ok' : 'bad'} small" style="margin-bottom:12px"><span class="i">${last.outcome === 'CONFIRMED' ? '✅' : '❌'}</span><div>Last call: ${last.outcome === 'CONFIRMED' ? 'confirmed' : 'not confirmed'} by ${last.userName}. ${last.outcome === 'CONFIRMED' ? 'Check the remaining approval requirements below.' : ''}</div></div>` : ''}
       <div class="small" style="margin-bottom:10px">Checking: <b class="mono">${d.bankRevealed ? V.formatIban(data.iban) : data.iban || data.bankAccountNo}</b> · BIC ${data.bic} · ${data.bankName}${!d.bankRevealed ? html` · <button class="linkish" id="reveal2">show full IBAN</button>` : ''}</div>
       <div class="form-grid">
         <div class="field"><label for="bNum">Number called</label><input id="bNum" type="tel" placeholder="+353 1 …"></div>
@@ -282,18 +284,27 @@
       <div class="field"><label>Outcome</label><div class="choices"><button class="choice" type="button" data-out="CONFIRMED"><span class="t">✅ Confirmed</span><span class="d">Account name and IBAN match</span></button><button class="choice" type="button" data-out="NOT_CONFIRMED"><span class="t">❌ Not confirmed</span><span class="d">Something didn't match</span></button></div></div>
       <div class="field"><label for="bNotes">Notes</label><textarea id="bNotes" placeholder="What was confirmed?"></textarea></div>
       <button class="btn btn-primary" id="bSave">Record call-back</button>
+      ${DEV ? html`<button class="btn btn-line" id="fillCallback" type="button">✨ Fill for me</button>` : ''}
     </div>`
   }
 
   function wireBank (id, reload) {
     if (!$('#bSave')) return
     let outcome = null
+    if ($('#fillCallback')) $('#fillCallback').onclick = async () => {
+      try {
+        const sample = await api('/api/dev/example')
+        $('#bNum').value = sample.callback.numberCalled; $('#bSrc').value = sample.callback.numberSource
+        $('#bWho').value = sample.callback.personSpokenTo; $('#bNotes').value = sample.callback.notes
+        $('[data-out="CONFIRMED"]').click()
+      } catch (e) { errMsg(e) }
+    }
     if ($('#reveal2')) $('#reveal2').onclick = () => reload({ reveal: true })
     $$('[data-out]').forEach(b => { b.onclick = () => { outcome = b.dataset.out; $$('[data-out]').forEach(x => x.classList.toggle('on', x === b)) } })
     $('#bSave').onclick = async () => {
       try {
         await api(`/api/internal/requests/${id}/bank-verification`, { method: 'POST', body: { numberCalled: $('#bNum').value, numberSource: $('#bSrc').value, personSpokenTo: $('#bWho').value, calledAt: new Date($('#bAt').value).toISOString(), outcome, notes: $('#bNotes').value } })
-        toast(outcome === 'CONFIRMED' ? 'Call-back recorded ✅ You can approve now.' : 'Call-back recorded. Consider sending it back to the vendor.', 'ok')
+        toast(outcome === 'CONFIRMED' ? 'Call-back recorded ✅ Review the remaining approval checks.' : 'Call-back recorded. Consider sending it back to the vendor.', 'ok')
         reload()
       } catch (e) { errMsg(e) }
     }
@@ -346,7 +357,7 @@
 
   function devLinkModal (link) {
     const full = new URL(link, location.origin).href
-    modal(html`<h2>✉️ Invite sent</h2><p>In demo mode no real email goes out. You can open the vendor's view directly, or find the email in the test mailbox.</p><input readonly value="${full}"><div class="row" style="margin-top:14px"><a class="btn btn-line" href="#/mailbox" data-close>Open test mailbox</a><span class="spacer"></span><a class="btn btn-primary" href="${full}" target="_blank" rel="noopener">Open as the vendor →</a></div>`)
+    modal(html`<h2>✉️ Invite sent</h2><p>In demo mode no real email goes out. You can open the vendor's view directly, or find the email in the test mailbox.</p><input readonly aria-label="Demo vendor invitation link" value="${full}"><div class="row" style="margin-top:14px"><a class="btn btn-line" href="#/mailbox" data-close>Open test mailbox</a><span class="spacer"></span><a class="btn btn-primary" href="${full}" target="_blank" rel="noopener">Open as the vendor →</a></div>`)
   }
 
   // ---------------------------------------------------------------- invite wizard
@@ -367,13 +378,21 @@
       <div class="field"><label>What will they do for Jones?</label>
         <div class="choices" id="iTypes">${at.map(a => html`<button class="choice" type="button" data-at="${a.code}"><span class="t">${{ box: '📦', person: '🧑‍💻', people: '👷', crane: '🏗️' }[a.icon] || '•'} ${a.label}</span><span class="d">${a.question}</span><span class="d" style="font-weight:700">${a.code} · ${a.numberRange}</span></button>`)}</div>
         <span class="hint">Not sure? Materials only → Material Supplier. Labour only, under Jones supervision → Supply of Personnel. Goods and labour with their own spec and quality → Fully Contracted out.</span></div>
-      <div class="field"><label>Payment terms (set by Jones)</label><div class="seg" id="iTerms">${terms.map(t => html`<button type="button" data-t="${t.code}" class="${t.code === st.paymentTerms ? 'on' : ''}">${t.label}${t.requiresProcurement ? ' · needs Procurement' : ''}</button>`)}</div></div>
+      <div class="field"><label>Payment terms (set by Jones)</label><div class="seg" id="iTerms">${terms.map(t => html`<button type="button" data-t="${t.code}" class="${t.code === st.paymentTerms ? 'on' : ''}">${t.label}</button>`)}</div></div>
       <div class="field"><label for="iWhy">Why do we need them? (project or purpose)</label><input id="iWhy" placeholder="e.g. Pipework for the Cork pharma site"></div>
+      ${DEV ? html`<button class="btn btn-line" id="fillInvite" type="button">✨ Fill for me</button>` : ''}
       <div id="iErr"></div>
       <div class="row"><span class="spacer"></span><button class="btn btn-line" data-close>Cancel</button><button class="btn btn-primary btn-lg" id="iGo">Send invite ✉️</button></div>`, { wide: true })
     $$('[data-at]', m.el).forEach(b => { b.onclick = () => { st.accountType = b.dataset.at; $$('[data-at]', m.el).forEach(x => x.classList.toggle('on', x === b)) } })
     $$('[data-t]', m.el).forEach(b => { b.onclick = () => { st.paymentTerms = b.dataset.t; $$('[data-t]', m.el).forEach(x => x.classList.toggle('on', x === b)) } })
     $('#iCountry', m.el).onchange = e => { const c = cfg.countries.find(x => x.code === e.target.value); if (c) $('#iCur', m.el).value = c.defaultCurrency }
+    if ($('#fillInvite')) $('#fillInvite').onclick = async () => {
+      try {
+        const sample = await api('/api/dev/example?country=' + $('#iCountry').value)
+        for (const [id, key] of Object.entries({ iCo: 'companyName', iName: 'vendorContactName', iEmail: 'vendorEmail', iWhy: 'businessReason', iCur: 'currency' })) $('#' + id).value = sample.invite[key]
+        $('[data-at="YBIV"]', m.el).click()
+      } catch (e) { errMsg(e) }
+    }
     $('#iGo', m.el).onclick = async () => {
       const body = { companyName: $('#iCo', m.el).value, vendorContactName: $('#iName', m.el).value, vendorEmail: $('#iEmail', m.el).value, country: $('#iCountry', m.el).value, currency: $('#iCur', m.el).value, accountType: st.accountType, paymentTerms: st.paymentTerms, businessReason: $('#iWhy', m.el).value }
       $('#iGo', m.el).disabled = true
@@ -392,10 +411,11 @@
   // ---------------------------------------------------------------- admin
   async function admin (tab) {
     if (!has('VOB_MasterDataAdmin')) { app.innerHTML = html`<div class="wrap" style="padding-top:30px"><div class="banner info"><span class="i">🔒</span><div>Only master data admins can open this page.</div></div></div>`; return }
-    const tabs = [['sap-errors', '🚨 SAP errors'], ['config', '⚙️ Configuration'], ['connection', '🔌 SAP connection']]
+    const tabs = [['sap-errors', '🚨 SAP errors'], ['routes', '🔀 Approval routes'], ['config', '⚙️ Configuration'], ['connection', '🔌 SAP connection']]
     app.innerHTML = html`<div class="wrap" style="padding-top:26px"><h1>Admin</h1><div class="seg" style="margin-bottom:16px">${tabs.map(([k, l]) => html`<button class="${k === tab ? 'on' : ''}" data-tab="${k}" type="button">${l}</button>`)}</div><div id="adm"></div></div>`
     $$('[data-tab]').forEach(b => { b.onclick = () => { location.hash = '#/admin/' + b.dataset.tab } })
     const box = $('#adm')
+    if (tab === 'routes') return window.VobRoutes.render(box)
     if (tab === 'sap-errors') {
       const rows = await api('/api/internal/requests?view=sap-errors')
       box.innerHTML = rows.length ? html`<div class="stack">${rows.map(r => rowCard(r))}</div><p class="small muted" style="margin-top:12px">Open a request to see SAP's message in plain English, correct the finance data, and retry. Retries never create a second vendor.</p>` : html`<div class="card empty"><div class="art">🌈</div>No SAP errors. Everything is flowing.</div>`
@@ -412,8 +432,8 @@
       box.innerHTML = html`<div class="grid g2">
         <div class="card"><h3>⏱️ Settings</h3>${Object.entries(s).map(([k, v]) => html`<div class="field"><label for="s_${k}" class="small mono">${k}</label><div class="row" style="flex-wrap:nowrap"><input id="s_${k}" value="${v}"><button class="btn btn-sm btn-ghost" data-set="${k}">Save</button></div></div>`)}</div>
         <div class="stack">
-          <div class="card"><h3>💳 Payment terms</h3><table class="table"><thead><tr><th>Code</th><th>SAP key</th><th>Procurement?</th></tr></thead><tbody>${cfg.paymentTerms.map(t => html`<tr><td>${t.label}</td><td><input data-pt="${t.code}" value="${t.sapKey}" style="width:90px;padding:6px 8px"></td><td>${t.requiresProcurement ? 'Yes' : 'No'}</td></tr>`)}</tbody></table><button class="btn btn-sm btn-ghost" id="savePt" style="margin-top:8px">Save SAP keys</button></div>
-          <div class="card"><h3>🏷️ Account types</h3><table class="table"><thead><tr><th>Group</th><th>Recon. account</th></tr></thead><tbody>${cfg.accountTypes.map(a => html`<tr><td><b>${a.code}</b> ${a.label}</td><td><input data-at="${a.code}" value="${a.reconAccount || ''}" style="width:130px;padding:6px 8px"></td></tr>`)}</tbody></table><button class="btn btn-sm btn-ghost" id="saveAt" style="margin-top:8px">Save accounts</button></div>
+          <div class="card"><h3>💳 Payment terms</h3><table class="table"><thead><tr><th>Code</th><th>SAP key</th></tr></thead><tbody>${cfg.paymentTerms.map(t => html`<tr><td>${t.label}</td><td><input data-pt="${t.code}" aria-label="SAP payment key for ${t.label}" value="${t.sapKey}" style="width:90px;padding:6px 8px"></td></tr>`)}</tbody></table><button class="btn btn-sm btn-ghost" id="savePt" style="margin-top:8px">Save SAP keys</button></div>
+          <div class="card"><h3>🏷️ Account types</h3><table class="table"><thead><tr><th>Group</th><th>Recon. account</th></tr></thead><tbody>${cfg.accountTypes.map(a => html`<tr><td><b>${a.code}</b> ${a.label}</td><td><input data-at="${a.code}" aria-label="Reconciliation account for ${a.label}" value="${a.reconAccount || ''}" style="width:130px;padding:6px 8px"></td></tr>`)}</tbody></table><button class="btn btn-sm btn-ghost" id="saveAt" style="margin-top:8px">Save accounts</button></div>
           <div class="card"><h3>📎 Document types</h3>${cfg.docTypes.map(d => html`<div class="small" style="margin-bottom:6px"><b>${d.label}</b> · required for <span class="pill">${d.requiredFor}</span>${d.countries ? html` · <span class="pill">${d.countries}</span>` : ''}${d.needsValidUntil ? ' · has expiry date' : ''}</div>`)}</div>
           <div class="card"><h3>📇 Approver directory</h3><p class="small muted">Who gets the "waiting for you" emails for each role.</p><div id="dir" class="small muted">Loading…</div></div>
         </div></div>`

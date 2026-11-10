@@ -12,3 +12,4 @@ senderAddress;noreply@joneseng.com;Sender address for emails (placeholder, open 
 portalBaseUrl;;Public base URL of the vendor portal. Empty = same host as the app
 supportEmail;accounts.payable@jones.test;Shown to vendors who need help (placeholder)
 retentionMonthsClosed;12;Months before rejected or expired requests are anonymised
+requesterReviewEnabled;true;Requester reviews the vendor before the configured approval route

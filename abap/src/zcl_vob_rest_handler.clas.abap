@@ -47,7 +47,9 @@ CLASS zcl_vob_rest_handler IMPLEMENTATION.
           reply( io_server = server iv_status = 200 iv_json = to_json( lo_service->read_vendor( CONV lifnr( lt_parts[ 2 ] ) ) ) ).
 
         ELSEIF lv_method = 'POST' AND lines( lt_parts ) = 3 AND lt_parts[ 1 ] = 'vendors' AND lt_parts[ 3 ] = 'attachments'.
-          reply( io_server = server iv_status = 200 iv_json = to_json( lo_service->add_attachment( iv_lifnr = CONV lifnr( lt_parts[ 2 ] ) iv_json = lv_body ) ) ).
+          DATA(ls_attachment) = lo_service->add_attachment( iv_lifnr = CONV lifnr( lt_parts[ 2 ] ) iv_json = lv_body ).
+          reply( io_server = server iv_status = COND #( WHEN ls_attachment-has_errors = abap_true THEN 422 ELSE 200 )
+            iv_json = to_json( ls_attachment ) ).
 
         ELSE.
           reply( io_server = server iv_status = 404 iv_json = '{"messages":[{"type":"E","text":"Unknown route"}]}' ).

@@ -89,6 +89,39 @@ router.get('/requests/:id/fin010.pdf', async (req, res, next) => {
 // Admin
 const adminOnly = req => { const a = actorOf(req); if (!a.roles.includes(W.ROLES.ADMIN)) fail(403, 'NOT_ALLOWED', 'Only master data admins can do this.'); return a }
 
+function routeInput (input, cfg) {
+  const A = require('../lib/approval-routes')
+  if (!Array.isArray(input) || input.length > 50) fail(422, 'INVALID', 'Provide up to 50 approval routes.')
+  const routes = input.map(r => ({ ID: String(r.ID || '').slice(0, 40), name: String(r.name || '').trim().slice(0, 100), priority: Number(r.priority), active: r.active === true, steps: A.values(r.steps).join(','), bankCheckMode: r.bankCheckMode,
+    ...Object.fromEntries(Object.keys(A.DIMENSIONS).map(k => [k, A.values(r[k]).join(',')])) }))
+  const errors = A.validate(routes)
+  if (routes.some(r => !/^[A-Za-z0-9_-]{1,40}$/.test(r.ID)) || new Set(routes.map(r => r.ID)).size !== routes.length) errors.push('Every route needs a different ID containing letters, numbers or hyphens.')
+  const allowed = { accountTypes: cfg.accountTypes.map(x => x.code), paymentTerms: cfg.paymentTerms.map(x => x.code), companyCode: cfg.companyCodes.map(x => x.code), country: cfg.countries.map(x => x.code) }
+  for (const r of routes) for (const key of Object.keys(allowed)) if (A.values(r[key]).some(x => !allowed[key].includes(x))) errors.push(`${r.name}: choose known ${key} values.`)
+  if (errors.length) fail(422, 'INVALID_ROUTE', errors.join(' '), { errors })
+  return routes
+}
+
+router.put('/admin/routes', handle(async req => {
+  const actor = adminOnly(req), cfg = await R.config()
+  const routes = routeInput(req.body?.routes, cfg)
+  if (typeof req.body.requesterReviewEnabled !== 'boolean') fail(422, 'INVALID', 'Choose whether requester review is enabled.')
+  await DELETE.from('jones.vob.ApprovalRoutes')
+  await INSERT.into('jones.vob.ApprovalRoutes').entries(routes)
+  await UPSERT.into('jones.vob.Settings').entries({ name: 'requesterReviewEnabled', value: String(req.body.requesterReviewEnabled), description: 'Requester review before configured approval route' })
+  await require('../lib/util').audit(null, actor, 'ROUTES_CHANGED', `Saved ${routes.length} routes; requester review ${req.body.requesterReviewEnabled ? 'on' : 'off'}. Existing request snapshots unchanged.`)
+  return { routes }
+}))
+
+router.post('/admin/routes/test', handle(async req => {
+  adminOnly(req)
+  const cfg = await R.config(), routes = req.body?.routes ? routeInput(req.body.routes, cfg) : cfg.approvalRoutes
+  const settings = { ...cfg.settings }
+  if (typeof req.body?.requesterReviewEnabled === 'boolean') settings.requesterReviewEnabled = req.body.requesterReviewEnabled
+  const route = require('../lib/approval-routes').resolve(routes, req.body?.vendor || {}, settings)
+  return { ...route, summary: route.steps.map(s => s.short).join(' → ') }
+}))
+
 router.post('/admin/sap-ping', handle(async req => {
   adminOnly(req)
   const t0 = Date.now()
@@ -114,6 +147,7 @@ router.put('/admin/config/:table', handle(async req => {
   const def = EDITABLE[req.params.table]
   if (!def) fail(400, 'BAD_TABLE', 'That table cannot be edited here.')
   const row = req.body || {}
+  if (req.params.table === 'Settings' && row.name === 'requesterReviewEnabled' && !['true', 'false'].includes(String(row.value))) fail(422, 'INVALID', 'Requester review must be true or false.')
   const where = Object.fromEntries(def.key.map(k => [k, row[k]]))
   if (def.key.some(k => !String(row[k] ?? '').trim())) fail(422, 'INVALID', 'Key fields are required.')
   const set = Object.fromEntries(def.fields.filter(f => f in row).map(f => [f, row[f]]))
@@ -137,6 +171,6 @@ router.delete('/admin/config/:table', handle(async req => {
   return { ok: true }
 }))
 
-router.use((err, req, res, next) => require('./http').sendError(req, res, err))
+router.use((err, req, res, _next) => require('./http').sendError(req, res, err))
 
 module.exports = router

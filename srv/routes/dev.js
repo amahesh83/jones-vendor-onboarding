@@ -7,6 +7,10 @@ const R = require('../lib/requests')
 const { handle } = require('./http')
 
 const router = express.Router()
+router.use((req, res, next) => {
+  try { require('../lib/demo-examples').assertEnabled(); next() } catch { res.status(404).json({ error: { message: 'Not found.' } }) }
+})
+router.get('/example', handle(async req => require('../lib/demo-examples').example({ country: req.query.country })))
 
 router.get('/personas', (req, res) => res.json(PERSONAS))
 
