@@ -9,5 +9,9 @@ The detailed questions and provisional defaults remain in solution design §13. 
 - Q13–Q14: IAS/Entra trust and role mapping, Graph sender/app registration and approved test identities remain external prerequisites.
 - Q15: EY may require destination routing via CPI; no CPI build or BPA approvals are authorised.
 - Q16–Q17: retention, approved branding and vendor-facing domain remain to be confirmed.
+  - Since 2026-11-10 the default runs: rejected, expired and cancelled requests are anonymised after `retentionMonthsClosed` (12) months. The audit trail is kept and still names the vendor contact in early events such as the invite; Jones should confirm that is acceptable or ask for audit-message redaction.
+  - Privacy notice: the portal shows a link once an admin sets `privacyNoticeUrl` (https only). Jones must supply the approved notice; no legal text has been written.
+- Q18 (new): RoleDirectory starts empty in production, so the approver pools for each role must be given before go-live.
+- Q19 (new): a shareable *BTP demo* (mock SAP and in-app mailbox in a cloud space) is not built. Production refuses mocks by design. The owner should decide whether a separate, clearly labelled demo space is wanted.
 
 No business answers or production integration results have been fabricated. Claude should maintain this log as answers arrive and update the design/runbook accordingly.

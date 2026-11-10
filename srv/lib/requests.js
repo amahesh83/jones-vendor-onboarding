@@ -226,6 +226,7 @@ async function vendorView (r) {
     })),
     countries: cfg.countries.map(c => ({ code: c.code, name: c.name, defaultCurrency: c.defaultCurrency })),
     supportEmail: cfg.settings.supportEmail,
+    privacyNoticeUrl: /^https:\/\/[^\s"'<>]+$/.test(String(cfg.settings.privacyNoticeUrl || '')) ? cfg.settings.privacyNoticeUrl : null,
   }
 }
 
@@ -437,6 +438,7 @@ async function decide (actor, id, action, payload = {}) {
         await UPDATE(E.R).set(patch).where({ ID: id })
         await U.audit(id, actor, 'REQUESTER_CHANGED', `Requester changed ${Object.entries(patch).map(([k, v]) => `${k} ${r[k]} → ${v}`).join(', ')}`)
         Object.assign(r, patch)
+        if (patch.accountType || patch.paymentTerms) await reassessAfterRequesterChange(actor, r, cfg)
       }
     }
     const blocker = W.approvalBlocker(r, { bankConfirmed: await bankConfirmed(r, actor), simulationValid: !!r.sapSimulatedOk })
@@ -467,6 +469,35 @@ async function decide (actor, id, action, payload = {}) {
     return { status: 'REJECTED' }
   }
   fail(400, 'BAD_ACTION', 'Unknown action.')
+}
+
+/**
+ * The requester reclassified the vendor at requester review (still the first step,
+ * so no later approval exists yet). The route snapshot and the vendor's obligations
+ * were derived from the old classification, so re-derive both:
+ *  - if the new classification needs data or documents the vendor has not given
+ *    (e.g. RCT number and sub-contractor documents), refuse; the requester sends it back;
+ *  - otherwise re-resolve the route from current configuration and save it as the
+ *    request's snapshot (requester review stays first, as it is the step in progress).
+ * Throwing rolls back the classification change with the surrounding transaction.
+ */
+async function reassessAfterRequesterChange (actor, r, cfg) {
+  const ctx = ctxFor(r, cfg)
+  const errors = V.validateAll(r, ctx)
+  const docs = await SELECT.from(E.D).columns('ID', 'docType', 'validUntil', 'scanStatus').where({ request_ID: r.ID })
+  const missing = missingDocuments(r, cfg, docs)
+  if (Object.keys(errors).length || missing.length) {
+    const needs = [...new Set([...Object.keys(errors).map(k => { const f = V.FIELDS.find(x => x.key === k); return f ? V.labelOf(f, ctx) : k }), ...missing.map(m => m.label)])]
+    fail(422, 'VENDOR_INPUT_NEEDED', `With this change the vendor must also provide: ${needs.join(', ')}. Send the request back to the vendor and ask for these instead.`, { errors, missing })
+  }
+  const before = W.routeFor(r)
+  const route = require('./approval-routes').resolve(cfg.approvalRoutes, r, { ...cfg.settings, requesterReviewEnabled: true })
+  r.routeSnapshot = JSON.stringify(route)
+  await UPDATE(E.R).set({ routeSnapshot: r.routeSnapshot }).where({ ID: r.ID })
+  const summary = x => x.steps.map(s => s.short).join(' → ')
+  if (before.name !== route.name || summary(before) !== summary(route)) {
+    await U.audit(r.ID, actor, 'ROUTE_REASSIGNED', `Route changed after reclassification: ${before.name} (${summary(before)}) → ${route.name} (${summary(route)})`)
+  }
 }
 
 async function rejectNow (actor, r, step, reason, cfg) {
@@ -950,7 +981,37 @@ async function runJobs () {
   // housekeeping: expired sessions and challenges
   await DELETE.from(E.P).where({ expiresAt: { '<': iso(now()) } })
   await DELETE.from(E.O).where({ expiresAt: { '<': iso(U.addDays(now(), -1)) } })
+  out.anonymised = await anonymiseClosed(cfg)
   return out
+}
+
+/** Columns that hold vendor personal, tax or bank data, or free text that may quote it. */
+const PERSONAL_COLUMNS = [...new Set([...VENDOR_FIELDS.filter(k => k !== 'country'), 'vendorContactName', 'declarationName', 'declarationIp',
+  'returnMessage', 'returnSections', 'duplicatesJson', 'checksJson', 'duplicateJustification', 'sapSimulationJson', 'sapMessagesJson'])]
+
+/**
+ * Retention (design §10, setting retentionMonthsClosed, default 12): requests that
+ * ended without a vendor (rejected, expired, cancelled) lose their personal and bank
+ * data, documents, versions, call-back evidence, links, codes and stored emails.
+ * Created vendors are kept (7-year rule; nothing is old enough yet). The request
+ * row, its status/dates and the audit trail remain for statistics and audit.
+ */
+async function anonymiseClosed (cfg) {
+  const months = Number(cfg.settings.retentionMonthsClosed || 12)
+  const cutoff = new Date(now()); cutoff.setMonth(cutoff.getMonth() - months)
+  const stale = await SELECT.from(E.R).columns('ID', 'requestNumber')
+    .where({ status: { in: ['REJECTED', 'EXPIRED', 'CANCELLED'] }, anonymisedAt: null, closedAt: { '<': iso(cutoff) } })
+  for (const r of stale) {
+    const patch = Object.fromEntries(PERSONAL_COLUMNS.map(k => [k, null]))
+    Object.assign(patch, {
+      companyName: `Anonymised vendor ${r.requestNumber}`, vendorEmail: `anonymised-${String(r.requestNumber).toLowerCase()}@invalid`,
+      notVatRegistered: false, duplicateBlocking: false, anonymisedAt: iso(now()),
+    })
+    await UPDATE(E.R).set(patch).where({ ID: r.ID })
+    for (const entity of [E.D, E.VER, E.B, E.T, E.O, E.P, E.N]) await DELETE.from(entity).where({ request_ID: r.ID })
+    await U.audit(r.ID, U.SYSTEM, 'ANONYMISED', `Personal, tax and bank data, documents and stored emails removed ${months} months after closing (retention policy)`)
+  }
+  return stale.length
 }
 
 module.exports = {

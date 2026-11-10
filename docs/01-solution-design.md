@@ -322,7 +322,9 @@ Codex must keep the SAP targets **configurable** where marked ⚙. Items marked 
 | Withholding tax | Per company code + country + account type: WHT type and allowed codes (e.g. RCT 0/20/35 %) |
 | Approval routes | Priority, conditions, ordered steps, active flag, bank-check mode; see §6 and ADR-003 |
 | Approver directory | Role → notification email list |
-| Settings | Invite expiry (30 days), reminder days, escalation days, OTP lifetime, retention, sender address, portal base URL, feature flags, requesterReviewEnabled (default true) |
+| Settings | Invite expiry (30 days), reminder days, escalation days, OTP lifetime, retention, sender address, portal base URL, privacy notice URL, feature flags, requesterReviewEnabled (default true) |
+
+Admin-editable tables get their starting values from `srv/seed/` when the app starts: only empty tables, plus any missing setting names. They are not HDI table data, so a redeploy never overwrites business changes (deviation D10). The role directory is not seeded in production. Countries, currencies and WHT codes stay deployment-managed in `db/data`.
 
 ---
 
@@ -361,8 +363,8 @@ The CAP SAP adapter calls a JSON REST API. In production it is served by the ABA
 - **Authorisation and SoD**: enforced on the server, never only in the UI. Every action checks the role, the status, and the person's earlier steps on that request.
 - **Uploads**: type allow-list (PDF/JPG/PNG), size limit, malware scan before any internal user can open a file. Infected files are rejected with a friendly message.
 - **Audit**: an append-only event table (no update/delete API) plus the SAP Audit Log service for personal data.
-- **Headers and privacy**: CSP, HSTS, no-sniff and frame-deny headers. A privacy notice on the portal.
-- **Retention (⚙)**: anonymise rejected/expired requests after 12 months; keep created ones 7 years.
+- **Headers and privacy**: CSP, HSTS, no-sniff and frame-deny headers. A privacy notice link in the portal footer once Jones supplies the notice URL (Q16).
+- **Retention (⚙)**: anonymise rejected/expired/cancelled requests after 12 months (implemented in the scheduled reminder/expiry job, `cds.requires.vob.jobMinutes`: personal, tax and bank fields, documents, versions, call-back evidence, links, codes and stored emails are removed; status, dates and the audit trail remain); keep created ones 7 years.
 - **No secrets in the repo.** Destinations and credentials live in BTP service bindings only.
 - **Dev-only login switcher** for local testing, impossible to enable in the production profile.
 

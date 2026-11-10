@@ -263,6 +263,82 @@ describe('vendor onboarding journey', () => {
     } finally { await PUT('/api/internal/admin/routes', { routes: cfg.approvalRoutes, requesterReviewEnabled: true }, as('adam')) }
   })
 
+  test('requester reclassification re-resolves the route or asks the vendor for what is missing', async () => {
+    // 60 -> 30 days EOM needs nothing new from the vendor: the saved route is re-derived.
+    const terms = await submittedExample('reclassify-terms')
+    await POST(`/api/internal/requests/${terms.ID}/approve`, { paymentTerms: '30EOM' }, as('rachel'))
+    let d = (await GET(`/api/internal/requests/${terms.ID}`, as('rachel'))).data
+    assert.equal(d.route.name, 'Short payment terms')
+    assert.deepEqual(d.steps.map(s => s.code), ['REQUESTER', 'PROCUREMENT', 'BANK_CHECK', 'FINANCE'])
+    assert.equal(d.request.status, 'PENDING_PROCUREMENT')
+    assert.ok(d.events.some(e => e.event === 'ROUTE_REASSIGNED'))
+    // Material supplier -> sub-contractor needs RCT and sub-contractor documents: refused, nothing changes.
+    const sub = await submittedExample('reclassify-sub')
+    await fails(POST(`/api/internal/requests/${sub.ID}/approve`, { accountType: 'YBCS' }, as('rachel')), 422, /Send the request back/)
+    d = (await GET(`/api/internal/requests/${sub.ID}`, as('rachel'))).data
+    assert.equal(d.request.accountType, 'YBIV')
+    assert.equal(d.request.status, 'PENDING_REQUESTER')
+    assert.equal(d.route.name, 'Default')
+  })
+
+  test('route editor refuses Requester review as a route step', async () => {
+    const cfg = (await GET('/api/internal/config', as('adam'))).data
+    const withRequester = cfg.approvalRoutes.map(x => x.ID === 'DEFAULT' ? { ...x, steps: 'REQUESTER,BANK_CHECK,FINANCE' } : x)
+    await fails(PUT('/api/internal/admin/routes', { routes: withRequester, requesterReviewEnabled: true }, as('adam')), 422, /Requester review first/)
+  })
+
+  test('starting configuration is inserted only where missing, never over admin changes', async () => {
+    const seed = require('../srv/lib/seed-config')
+    await cds.tx(async () => {
+      await UPDATE('jones.vob.Settings').set({ value: '7' }).where({ name: 'reminderDays' })
+      await DELETE.from('jones.vob.Settings').where({ name: 'otpMinutes' })
+      const added = await seed.seed({ production: true })
+      assert.deepEqual(added, { Settings: 1 })
+      const s = Object.fromEntries((await SELECT.from('jones.vob.Settings')).map(r => [r.name, r.value]))
+      assert.equal(s.reminderDays, '7')
+      assert.equal(s.otpMinutes, '10')
+      await UPDATE('jones.vob.Settings').set({ value: '2' }).where({ name: 'reminderDays' })
+    })
+    // Admin-editable tables are no longer HDI table data (a redeploy would overwrite them).
+    const fs = require('fs')
+    for (const t of seed.TABLES) assert.ok(!fs.existsSync(`db/data/jones.vob-${t}.csv`), `${t} must not be in db/data`)
+  })
+
+  test('retention anonymises closed requests after the configured months; recent ones are kept', async () => {
+    const R = require('../srv/lib/requests')
+    const old = await submittedExample('retention-old')
+    const recent = await submittedExample('retention-recent')
+    for (const r of [old, recent]) await POST(`/api/internal/requests/${r.ID}/reject`, { reason: 'Synthetic retention test' }, as('rachel'))
+    await cds.tx(async () => {
+      await UPDATE('jones.vob.VendorRequests').set({ closedAt: new Date(Date.now() - 400 * 86400000).toISOString() }).where({ ID: old.ID })
+      const out = await R.runJobs()
+      assert.equal(out.anonymised, 1)
+    })
+    const gone = await SELECT.one.from('jones.vob.VendorRequests').where({ ID: old.ID })
+    assert.ok(gone.anonymisedAt)
+    assert.equal(gone.iban, null); assert.equal(gone.vatNumber, null); assert.equal(gone.accountsEmail, null)
+    assert.match(gone.companyName, /^Anonymised vendor/); assert.match(gone.vendorEmail, /@invalid$/)
+    assert.equal(gone.status, 'REJECTED')
+    for (const t of ['RequestDocuments', 'RequestVersions', 'Notifications', 'InviteTokens']) {
+      assert.equal((await SELECT.from(`jones.vob.${t}`).where({ request_ID: old.ID })).length, 0, t)
+    }
+    assert.ok((await SELECT.from('jones.vob.AuditEvents').where({ request_ID: old.ID, event: 'ANONYMISED' })).length)
+    const kept = await SELECT.one.from('jones.vob.VendorRequests').where({ ID: recent.ID })
+    assert.equal(kept.anonymisedAt, null); assert.ok(kept.iban)
+    // A second run finds nothing more to do.
+    assert.equal((await cds.tx(() => R.runJobs())).anonymised, 0)
+  })
+
+  test('privacy notice link is https-only and reaches the vendor portal when set', async () => {
+    await fails(PUT('/api/internal/admin/config/Settings', { name: 'privacyNoticeUrl', value: 'javascript:alert(1)' }, as('adam')), 422, /https/)
+    const r = await submittedExample('privacy')
+    assert.equal((await GET('/api/portal/me', r.session.h)).data.privacyNoticeUrl, null)
+    await PUT('/api/internal/admin/config/Settings', { name: 'privacyNoticeUrl', value: 'https://privacy.example.test/vendors' }, as('adam'))
+    try {
+      assert.equal((await GET('/api/portal/me', r.session.h)).data.privacyNoticeUrl, 'https://privacy.example.test/vendors')
+    } finally { await PUT('/api/internal/admin/config/Settings', { name: 'privacyNoticeUrl', value: '' }, as('adam')) }
+  })
+
   test('IN_FINANCE route: requester review off, call-back gated, fresh after bank send-back', async () => {
     const cfg = (await GET('/api/internal/config', as('adam'))).data
     const lowRisk = { ID: 'LOW_RISK_TEST', priority: 1, name: 'Low-risk Finance', active: true, accountTypes: 'YBIV', country: 'IE', steps: 'FINANCE', bankCheckMode: 'IN_FINANCE' }

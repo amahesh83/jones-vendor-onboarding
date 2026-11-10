@@ -26,7 +26,7 @@
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)]
 
   let csrf = null
-  async function api (url, { method = 'GET', body, headers = {} } = {}) {
+  async function api (url, { method = 'GET', body, headers = {} } = {}, retried = false) {
     const h = { accept: 'application/json', ...headers }
     if (body !== undefined) h['content-type'] = 'application/json'
     if (method !== 'GET') {
@@ -43,7 +43,12 @@
     const ct = res.headers.get('content-type') || ''
     if (ct.includes('json')) data = await res.json().catch(() => null)
     if (!res.ok) {
-      if (res.status === 403 && /csrf/i.test(res.headers.get('x-csrf-token') || '')) csrf = null
+      // The App Router answers a missing/stale token with 403 and "x-csrf-token: Required"
+      // (e.g. after its session timed out). Fetch a fresh token and retry once.
+      if (res.status === 403 && /required/i.test(res.headers.get('x-csrf-token') || '')) {
+        csrf = null
+        if (!retried) return api(url, { method, body, headers }, true)
+      }
       const err = new Error(data?.error?.message || `Something went wrong (HTTP ${res.status}).`)
       err.status = res.status; err.code = data?.error?.code; err.details = data?.error?.details; err.technical = data?.error?.technical || data?.error?.ref
       throw err

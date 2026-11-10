@@ -22,6 +22,7 @@ entity VendorRequests : cuid, managed {
   submittedAt            : Timestamp;
   createdInSapAt         : Timestamp;
   closedAt               : Timestamp;
+  anonymisedAt           : Timestamp; // retention job removed personal and bank data (design §10)
 
   // set by the Jones requester
   requesterId            : String(255);

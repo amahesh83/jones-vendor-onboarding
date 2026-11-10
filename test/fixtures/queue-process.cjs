@@ -12,6 +12,7 @@ const cds = require('@sap/cds')
   if (mode === 'persist') {
     await cds.deploy(model).to(db)
     await cds.tx(async () => {
+      await require('../../srv/lib/seed-config').seed()
       await INSERT.into('jones.vob.VendorRequests').entries({ ID: id, requestNumber: 'VOB-2099-90001', companyName: 'Restart Synthetic Ltd', companyCode: 'IE01', country: 'IE', accountType: 'YBIV', paymentTerms: '60EOM', currency: 'EUR', status: 'CREATING', round: 1, requesterEmail: 'requester@example.test', vendorEmail: 'vendor@example.test' })
       await queue.enqueue(id)
     })

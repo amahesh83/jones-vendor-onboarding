@@ -1,5 +1,19 @@
 # Claude Code takeover — 2026-11-10
 
+> **Status after the Claude Code completion pass (2026-11-10, later the same day).** Items 2–4 and 6–7 below are done for everything possible without Jones's SAP/BTP. See [test-evidence.md](test-evidence.md) for the requirement-to-test mapping and coverage, [btp-setup-guide.md](btp-setup-guide.md) for the click-by-click deployment path, and [deviations.md](deviations.md) D10.
+>
+> Fixes made:
+> - Requester reclassification at requester review now re-derives the saved route, or refuses when the vendor must supply more.
+> - "Requester review" can no longer be added as a route step.
+> - Admin-editable configuration is seeded by the app, no longer HDI table data, so redeploys keep admin changes and production gets no placeholder approvers.
+> - App Router CSRF token refresh is fixed.
+> - The server's keep-alive timeout is raised; this was the source of random `ECONNRESET` errors.
+> - axe now waits for entrance animations, which caused the flaky contrast failures.
+> - Retention anonymisation and the privacy-notice link are implemented.
+> - A coverage script is added.
+>
+> Item 5 (ABAP in ECC DEV) and all live integrations remain external. The original handover text follows unchanged.
+
 ## Ownership and exact checkpoint
 
 The owner asked Claude Code to take over all remaining implementation, review, testing and completion work end to end. Codex is handing off now, not scheduling work for its return. The old “Claude reviews only, then gives Codex a fix prompt” arrangement is superseded. `AGENTS.md`, `CLAUDE.md` and the root takeover prompt reflect that change.

@@ -60,6 +60,9 @@ cds.on('bootstrap', app => {
 })
 
 cds.on('served', async () => {
+  // Admin-editable configuration is seeded by the app, not HDI table data, so a
+  // redeployment never overwrites approval routes or settings (see seed-config.js).
+  await cds.tx({ user: cds.User.privileged }, () => require('./srv/lib/seed-config').seed())
   const every = cds.env.requires?.vob?.jobMinutes
   if (every) {
     const R = require('./srv/lib/requests')
@@ -71,7 +74,11 @@ cds.on('served', async () => {
   }
 })
 
-cds.on('listening', async () => {
+cds.on('listening', async ({ server } = {}) => {
+  // Keep idle connections open longer than the App Router / gorouter (and test
+  // clients) reuse them. Node's 5 s default closes sockets a client may be about
+  // to reuse, which surfaces as random ECONNRESET errors.
+  if (server) { server.keepAliveTimeout = 65000; server.headersTimeout = 66000 }
   // Queue workers use unref timers: the HTTP server must exist before seeding awaits them.
   try {
     if (cds.env.requires?.vob?.demoData && !isProduction()) await require('./srv/lib/demo').seed()

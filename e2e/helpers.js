@@ -31,6 +31,12 @@ async function accessibility (page) {
   await page.locator('.skeleton').first().waitFor({ state: 'hidden' })
   await expect(page.locator('.toast')).toHaveCount(0, { timeout: 10000 })
   await page.evaluate(() => document.fonts.ready)
+  // Let finite entrance animations (fade-in/rise/pop) settle: axe measures the
+  // colours it sees, and a half-faded element reports false contrast failures.
+  // Infinite ones (pulse, shimmer) never finish, so they are skipped.
+  await page.evaluate(() => Promise.all(document.getAnimations()
+    .filter(a => a.effect?.getComputedTiming().iterations !== Infinity)
+    .map(a => a.finished.catch(() => {}))))
   // The email preview intentionally forbids scripts. Do not relax its sandbox to
   // inject axe; scan the mailbox UI and verify the preview's accessible title.
   if (await page.locator('iframe[sandbox]').count()) await expect(page.getByTitle('Email preview')).toBeVisible()

@@ -13,7 +13,9 @@ function validate (routes) {
     if (!steps.length || steps.at(-1) !== 'FINANCE') errors.push(`${r.name}: Finance must be last.`)
     if (new Set(steps).size !== steps.length) errors.push(`${r.name}: each step can appear only once.`)
     if (steps.some(s => !W.STEPS.some(x => x.code === s))) errors.push(`${r.name}: choose steps from the supported list.`)
-    if (steps.includes('REQUESTER') && steps[0] !== 'REQUESTER') errors.push(`${r.name}: Requester review must be first.`)
+    // Requester review is the global on/off switch (ADR-003), never a route step:
+    // resolve() would silently drop it, so reject it instead of pretending it was saved.
+    if (steps.includes('REQUESTER')) errors.push(`${r.name}: Requester review is switched on or off for all routes with the "Requester review first" setting; remove it from this route.`)
     if (r.bankCheckMode === 'SEPARATE' && !steps.includes('BANK_CHECK')) errors.push(`${r.name}: include Bank call-back before Finance.`)
     if (r.bankCheckMode === 'IN_FINANCE' && steps.includes('BANK_CHECK')) errors.push(`${r.name}: remove the separate Bank call-back step when Finance performs it.`)
   }

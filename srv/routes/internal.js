@@ -148,6 +148,7 @@ router.put('/admin/config/:table', handle(async req => {
   if (!def) fail(400, 'BAD_TABLE', 'That table cannot be edited here.')
   const row = req.body || {}
   if (req.params.table === 'Settings' && row.name === 'requesterReviewEnabled' && !['true', 'false'].includes(String(row.value))) fail(422, 'INVALID', 'Requester review must be true or false.')
+  if (req.params.table === 'Settings' && row.name === 'privacyNoticeUrl' && row.value && !/^https:\/\/[^\s"'<>]+$/.test(String(row.value))) fail(422, 'INVALID', 'The privacy notice link must start with https:// (or be empty).')
   const where = Object.fromEntries(def.key.map(k => [k, row[k]]))
   if (def.key.some(k => !String(row[k] ?? '').trim())) fail(422, 'INVALID', 'Key fields are required.')
   const set = Object.fromEntries(def.fields.filter(f => f in row).map(f => [f, row[f]]))

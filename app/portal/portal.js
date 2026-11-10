@@ -44,6 +44,9 @@
   function ctx () { return { country: S.data.country, accountType: S.accountType.code, subcontractor: S.accountType.subcontractor, notVatRegistered: !!S.data.notVatRegistered } }
 
   function route () {
+    // Jones's privacy notice (design §10) is linked only once an admin configures its URL.
+    const privacy = $('#privacyLink')
+    if (privacy && S.privacyNoticeUrl) { privacy.href = S.privacyNoticeUrl; privacy.hidden = false }
     if (!S.status.editable) return renderStatus()
     if (!S.lastSavedAt && S.round === 0 && !sessionStorage.getItem('vob_started')) return renderWelcome()
     if (S.returned && !sessionStorage.getItem('vob_seen_return')) { sessionStorage.setItem('vob_seen_return', '1'); step = S.returned.sections[0] || 'company' }

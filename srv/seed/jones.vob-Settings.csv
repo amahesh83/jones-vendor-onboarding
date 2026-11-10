@@ -13,3 +13,4 @@ portalBaseUrl;;Public base URL of the vendor portal. Empty = same host as the ap
 supportEmail;accounts.payable@jones.test;Shown to vendors who need help (placeholder)
 retentionMonthsClosed;12;Months before rejected or expired requests are anonymised
 requesterReviewEnabled;true;Requester reviews the vendor before the configured approval route
+privacyNoticeUrl;;HTTPS link to the Jones privacy notice shown in the vendor portal footer. Empty = hidden (open question Q16)
