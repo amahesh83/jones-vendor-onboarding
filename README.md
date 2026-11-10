@@ -1,5 +1,7 @@
 # Jones Vendor Onboarding (VOB)
 
+**Claude Code takeover (2026-11-10):** read [CLAUDE.md](CLAUDE.md), [the paste-in prompt](CLAUDE_CODE_PROMPT.md) and [the full handover](docs/CLAUDE_CODE_HANDOVER.md). Continue build/v1 and [draft PR #2](https://github.com/amahesh83/jones-vendor-onboarding/pull/2). Claude owns completion end to end. [Verified CI evidence](docs/test-evidence.md) and remaining external checks are recorded; do not rebuild from scratch.
+
 Replaces the paper/PDF **FIN-010-IE01 Vendor Account Set up Form** (H. A. O'Neil Limited / Jones Engineering, company code IE01).
 
 A Jones employee invites a vendor → the vendor opens a secure link, confirms a 6-digit email code and fills in a guided form → automatic checks (validation, duplicates in SAP and open requests) → a saved, configurable approval route (requester review by default, optional commercial checks, bank call-back and final Finance approval with SAP simulation) → the vendor is created in SAP ECC automatically, and the filled FIN-010 PDF with the approval trail is attached.

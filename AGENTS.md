@@ -29,12 +29,13 @@ VOB replaces the paper/PDF form **FIN-010-IE01 Vendor Account Set up Form** (H. 
 - **CPI:** only a possible deployment-time route (the destination points at a pass-through iFlow). Keep the adapter contract in design §9 destination-agnostic and build nothing CPI-specific.
 - **Changing the decision:** do not reopen it on your own. Write any concern in `docs/deviations.md` and carry on. Only a new ADR approved by the project owner can supersede ADR-001.
 
-## Working model (do not change)
+## Working model (owner updated 2026-11-10)
 
-1. v1 was built by Claude on branch `build/v1` (2026-11-09) while Codex was out of usage. Remaining items are in [`docs/deviations.md`](docs/deviations.md).
-2. **Codex continues from that build**: close the deviations, polish, add Playwright + axe, keep every test green. Do not rewrite working code for style.
-3. Codex hands over with a final message starting `READY FOR REVIEW`, then stops; Claude does one review and test pass.
-4. There are no mid-build review cycles, label loops or hand-off brokers.
+1. **Claude Code now owns continuation and completion end to end.** The owner explicitly requested this handover because Codex will be unavailable. This supersedes the former Codex-build / Claude-review-only arrangement.
+2. Read [`docs/CLAUDE_CODE_HANDOVER.md`](docs/CLAUDE_CODE_HANDOVER.md) and [`CLAUDE_CODE_PROMPT.md`](CLAUDE_CODE_PROMPT.md). Continue the existing implementation on `build/v1` and reuse [draft PR #2](https://github.com/amahesh83/jones-vendor-onboarding/pull/2). Do not rebuild from scratch or open a duplicate PR.
+3. Claude reviews, implements fixes, tests, updates evidence and runbooks, and handles the remaining work directly. Do not stop at a findings list or produce a fix prompt that depends on Codex returning.
+4. Keep the existing design system and working code. Preserve ADR-001/002/003 and the guardrails below. Distinguish implemented/tested mock behaviour from unverified SAP/BTP integration.
+5. Keep `npm test`, lint and e2e green, push changes to `build/v1`, and report actual results and remaining external dependencies. The existing build brief says to leave the PR unmerged; do not treat this handover alone as a new merge or production-deployment instruction.
 
 ## Sources of truth
 
