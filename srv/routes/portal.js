@@ -1,6 +1,7 @@
 'use strict'
 /* Public vendor API: /api/portal. Every call is scoped to the session's single request. */
 const express = require('express')
+const crypto = require('node:crypto')
 const cds = require('@sap/cds')
 const R = require('../lib/requests')
 const A = require('../lib/portal-auth')
@@ -13,7 +14,13 @@ router.post('/demo-fill', handle(async req => {
   const s = await withSession(req, true)
   return require('../lib/demo-examples').fill(s.request, req.body?.section, req.body || {})
 }))
-const limiter = rateLimit({ windowMs: 10 * 60000, max: 30, key: clientIp })
+const globalLimiter = rateLimit({ windowMs: 10 * 60000, max: 1500, key: clientIp })
+const inviteKey = req => {
+  const token = String(req.body?.token || '')
+  return token ? `invite:${crypto.createHash('sha256').update(token).digest('hex')}` : `ip:${clientIp(req)}`
+}
+const startLimiter = rateLimit({ windowMs: 10 * 60000, max: 5, key: inviteKey })
+const verifyLimiter = rateLimit({ windowMs: 10 * 60000, max: 30, key: inviteKey })
 
 async function withSession (req, mutating) {
   const s = await A.session(req, { mutating })
@@ -22,7 +29,7 @@ async function withSession (req, mutating) {
 }
 
 // 1. Open the link: check the invite token and email a code
-router.post('/start', limiter, async (req, res) => {
+router.post('/start', globalLimiter, startLimiter, async (req, res) => {
   try {
     const out = await cds.tx(() => A.start(req.body?.token))
     if (out.error) return res.status(out.error.status).json({ error: out.error })
@@ -31,7 +38,7 @@ router.post('/start', limiter, async (req, res) => {
 })
 
 // 2. Enter the code: on success set the session cookie
-router.post('/verify', limiter, async (req, res) => {
+router.post('/verify', globalLimiter, verifyLimiter, async (req, res) => {
   try {
     const out = await cds.tx(() => A.verify(req.body?.token, req.body?.code, clientIp(req)))
     if (out.error) return res.status(out.error.status).json({ error: out.error })

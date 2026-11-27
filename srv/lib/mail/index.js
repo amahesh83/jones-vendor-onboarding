@@ -43,15 +43,18 @@ async function send ({ to, template, data, requestId, actionUrl, code }) {
     ID: cds.utils.uuid(), request_ID: requestId || null, toAddress: recipients.join(', '), subject, template,
     channel: k, createdAt: iso(now()), status: 'SENT',
   }
+  let deliveryFailed = false
   if (k === 'local') Object.assign(row, { html, text, actionUrl: actionUrl || null, code: code || null })
   else {
     try { await sendGraph({ to: recipients, subject, html }) } catch (e) {
+      deliveryFailed = true
       row.status = 'FAILED'
       row.error = String(e.message).slice(0, 500)
       cds.log('vob-mail').error('Email failed', e)
     }
   }
   await INSERT.into('jones.vob.Notifications').entries(row)
+  if (deliveryFailed) fail(424, 'EMAIL_FAILED', 'Email delivery failed. This action was not completed; check the mail configuration before retrying.')
 }
 
 /** Email addresses for an approver role from the admin-maintained directory. */

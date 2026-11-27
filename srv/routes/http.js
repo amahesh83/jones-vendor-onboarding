@@ -37,6 +37,8 @@ function rateLimit ({ windowMs, max, key = req => req.ip }) {
   }
 }
 
-const clientIp = req => String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim()
+// Do not trust X-Forwarded-For here: Cloud Foundry may append a shared load
+// balancer address, and the direct-client hop has not been verified in QAS.
+const clientIp = req => String(req.socket?.remoteAddress || '')
 
 module.exports = { handle, sendError, rateLimit, clientIp }

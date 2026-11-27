@@ -16,7 +16,7 @@ Jones uses shared application subaccounts: **Jones Applications Non-Prod** with 
 | `VOB_ECC` | OnPremise via Cloud Connector, basic auth (technical user) | `http://<virtual-host>:<port>` + path `/sap/zvob/v1` (or a CPI pass-through iFlow with the same contract) |
 | `VOB_GRAPH` | Internet, OAuth2ClientCredentials (Entra app registration with `Mail.Send`) | `https://graph.microsoft.com` |
 
-Step-by-step BAS/BTP instructions and the list of external prerequisites are in [btp-setup-guide.md](btp-setup-guide.md). With the `[production]` profile the app uses the real SAP adapter (`VOB_ECC`) and Graph mail (`VOB_GRAPH`). Both mocks refuse to run in production, so both destinations are needed for a usable deployment.
+Step-by-step BAS/BTP instructions and the list of external prerequisites are in [btp-setup-guide.md](btp-setup-guide.md). With the `[production]` profile the app uses the real SAP adapter (`VOB_ECC`) and Graph mail (`VOB_GRAPH`). Both mocks refuse to run in production, so both destinations are needed for a usable deployment. Graph send failures surface as a failed action (HTTP 424); fix the destination or sender configuration before retrying, and do not assume the invite or approval step completed.
 
 ## 4. Configuration after the first deploy
 Admin page → Configuration: payment-term SAP keys (Q1), reconciliation accounts per account group (Q2), `portalBaseUrl` (public URL of the App Router), `senderAddress` (Q14), approver directory emails.
@@ -24,6 +24,8 @@ Admin page → Configuration: payment-term SAP keys (Q1), reconciliation account
 Admin-editable configuration (Settings, ApprovalRoutes, PaymentTerms, AccountTypes, DocumentTypes, CompanyCodes, RoleDirectory) is **not** HDI table data. On start-up the app inserts starting values from `srv/seed/` only into empty tables, plus any missing setting names. Later deploys therefore never overwrite business-maintained values ([deviation D10](deviations.md)). The role directory is never seeded in production. After the first deploy, open **Admin → Configuration → Approver directory**, add at least one real mailbox for Purchasing, Procurement, Bank Check, Finance and Admin, and confirm the missing-recipient warning is gone. Do this before live approvals; empty pools have no approver mail target. The app prevents removing the last recipient in a pool. To change a starting value in an existing environment, change it in the app, not in the CSV.
 
 Admin → Approval routes: confirm the ADR-003 starting routes with the business, keep an active conditionless default and Finance last. Requester review defaults to on. SEPARATE bank checks are the default; IN_FINANCE requires explicit low-risk acceptance and removes the two-person bank check. Test representative IE/GB vendors before accepting changes. Existing requests retain their saved routes.
+
+Numeric timing settings are whole numbers with server-side bounds: invite expiry 1–365 days; OTP expiry 1–60 minutes; OTP attempts 1–10; OTP lock 1–1440 minutes; vendor session 5–1440 minutes; reminders 1–30 working days; escalations 1–90 working days; and closed-request retention 1–120 months. A rejected value is not saved.
 
 ## 5. Build and deploy
 ```bash

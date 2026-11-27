@@ -46,7 +46,15 @@ router.get('/requests/export.csv', async (req, res, next) => {
     const cds = require('@sap/cds')
     const rows = await cds.tx(() => R.list(actorOf(req), { view: req.query.view, q: req.query.q }))
     const cols = ['requestNumber', 'companyName', 'statusLabel', 'waitingOn', 'workingDaysInStep', 'daysOpen', 'requesterName', 'accountType', 'paymentTerms', 'country', 'sapVendorNumber', 'createdAt']
-    const esc = v => { const s = String(v ?? ''); return /[",\n;]/.test(s) || /^[=+\-@]/.test(s) ? `"${s.replace(/^([=+\-@])/, "'$1").replace(/"/g, '""')}"` : s }
+    const esc = v => {
+      const s = String(v ?? '')
+      // Prefix a text marker before any leading whitespace/control + formula
+      // operator. Quote all cells so CSV parsing cannot change the boundary.
+      let first = 0
+      while (first < s.length && s.charCodeAt(first) <= 0x20) first++
+      const safe = first < s.length && '=+-@'.includes(s[first]) ? `'${s}` : s
+      return `"${safe.replace(/"/g, '""')}"`
+    }
     const csv = '﻿' + [cols.join(','), ...rows.map(r => cols.map(c => esc(r[c])).join(','))].join('\r\n')
     res.set('content-type', 'text/csv; charset=utf-8').set('content-disposition', 'attachment; filename="vendor-requests.csv"').send(csv)
   } catch (e) { next(e) }
@@ -126,6 +134,15 @@ router.delete('/admin/role-directory', handle(async req => {
   const actor = adminOnly(req)
   const role = String(req.query.role || '').trim(), email = String(req.query.email || '').trim().toLowerCase()
   if (!NOTIFICATION_ROLES.includes(role) || !email) fail(422, 'INVALID', 'Choose a valid notification role and email address.')
+  // Every concurrent delete in this pool updates the same first row before
+  // counting. The row write lock serializes the check/delete in the DB.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const gate = await SELECT.one.from('jones.vob.RoleDirectory').where({ role }).orderBy('email')
+    if (!gate) break
+    const locked = await UPDATE('jones.vob.RoleDirectory').set({ name: gate.name }).where({ role, email: gate.email })
+    if (Number(locked) > 0) break
+    if (attempt === 2) fail(503, 'DIRECTORY_BUSY', 'The approver directory is changing. Please try again.')
+  }
   const existing = await SELECT.one.from('jones.vob.RoleDirectory').where({ role, email })
   if (!existing) fail(404, 'NOT_FOUND', 'That approver is not in the directory.')
   const count = await SELECT.from('jones.vob.RoleDirectory').where({ role })
@@ -192,6 +209,12 @@ router.put('/admin/config/:table', handle(async req => {
   const def = EDITABLE[req.params.table]
   if (!def) fail(400, 'BAD_TABLE', 'That table cannot be edited here.')
   const row = req.body || {}
+  const numericSettings = { inviteExpiryDays: [1, 365], otpMinutes: [1, 60], otpMaxAttempts: [1, 10], otpLockMinutes: [1, 1440], sessionMinutes: [5, 1440], reminderDays: [1, 30], escalationDays: [1, 90], bankReminderDays: [1, 30], bankEscalationDays: [1, 90], retentionMonthsClosed: [1, 120] }
+  if (req.params.table === 'Settings' && numericSettings[row.name]) {
+    const [min, max] = numericSettings[row.name], value = Number(row.value)
+    if (!Number.isSafeInteger(value) || value < min || value > max) fail(422, 'INVALID', `${row.name} must be a whole number between ${min} and ${max}.`)
+    row.value = String(value)
+  }
   if (req.params.table === 'Settings' && row.name === 'requesterReviewEnabled' && !['true', 'false'].includes(String(row.value))) fail(422, 'INVALID', 'Requester review must be true or false.')
   if (req.params.table === 'Settings' && row.name === 'privacyNoticeUrl' && row.value && !/^https:\/\/[^\s"'<>]+$/.test(String(row.value))) fail(422, 'INVALID', 'The privacy notice link must start with https:// (or be empty).')
   const where = Object.fromEntries(def.key.map(k => [k, row[k]]))

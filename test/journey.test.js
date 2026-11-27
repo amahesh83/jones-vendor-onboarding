@@ -243,8 +243,14 @@ describe('vendor onboarding journey', () => {
   test('dashboard, list and CSV export', async () => {
     const dash = (await GET('/api/internal/dashboard', as('aoife'))).data
     assert.ok(dash.counts.createdThisMonth >= 2)
-    const csv = await GET('/api/internal/requests/export.csv', as('aoife'))
-    assert.match(csv.data, /requestNumber/)
+    const prior = await SELECT.one.from('jones.vob.VendorRequests').where({ ID: id })
+    await UPDATE('jones.vob.VendorRequests').set({ companyName: ' \t=HYPERLINK("https://evil.test")' }).where({ ID: id })
+    try {
+      const csv = await GET('/api/internal/requests/export.csv', as('aoife'))
+      assert.match(csv.data, /requestNumber/)
+      assert.ok(csv.data.includes(`"' \t=HYPERLINK(""https://evil.test"")"`))
+      assert.ok(!csv.data.includes(`"'"`), 'empty cells should stay empty, not become formula markers')
+    } finally { await UPDATE('jones.vob.VendorRequests').set({ companyName: prior.companyName }).where({ ID: id }) }
     await fails(GET('/api/internal/dashboard'), 401)
   })
 
@@ -410,6 +416,7 @@ describe('vendor onboarding journey', () => {
     const added = { role: original.role, email: 'NEW.PROCUREMENT@EXAMPLE.TEST', name: 'Test Procurement' }
     await fails(GET(route, as('rachel')), 403)
     await fails(POST(route, { ...added, email: 'bad' }, as('rachel')), 403)
+    await fails(POST(route, added, { auth: { username: 'adam', password: '' }, headers: {} }), 403)
     await fails(PUT('/api/internal/admin/config/RoleDirectory', original, as('adam')), 400)
     await fails(POST(route, { ...added, role: 'VOB_Auditor' }, as('adam')), 422)
     await fails(POST(route, { ...added, email: 'bad' }, as('adam')), 422)
@@ -420,13 +427,37 @@ describe('vendor onboarding journey', () => {
     await POST(route, added, as('adam'))
     let rows = (await GET(route, as('adam'))).data
     assert.ok(rows.some(r => r.role === added.role && r.email === added.email.toLowerCase() && r.name === added.name))
-    await HTTP_DELETE(`${route}?role=${encodeURIComponent(original.role)}&email=${encodeURIComponent(original.email)}`, as('adam'))
-    await fails(HTTP_DELETE(`${route}?role=${encodeURIComponent(added.role)}&email=${encodeURIComponent(added.email.toLowerCase())}`, as('adam')), 409)
+    const deletions = await Promise.allSettled([
+      HTTP_DELETE(`${route}?role=${encodeURIComponent(original.role)}&email=${encodeURIComponent(original.email)}`, as('adam')),
+      HTTP_DELETE(`${route}?role=${encodeURIComponent(added.role)}&email=${encodeURIComponent(added.email.toLowerCase())}`, as('adam')),
+    ])
+    assert.equal(deletions.filter(x => x.status === 'fulfilled').length, 1)
+    const rejected = deletions.find(x => x.status === 'rejected')
+    assert.equal(rejected.reason.response.status, 409)
+    rows = (await GET(route, as('adam'))).data
+    assert.equal(rows.filter(r => r.role === original.role).length, 1)
+    await POST(route, { ...original, name: 'Updated Priya' }, as('adam'))
+    rows = (await GET(route, as('adam'))).data
+    assert.equal(rows.find(r => r.role === original.role && r.email === original.email).name, 'Updated Priya')
     await POST(route, original, as('adam'))
-    await HTTP_DELETE(`${route}?role=${encodeURIComponent(added.role)}&email=${encodeURIComponent(added.email.toLowerCase())}`, as('adam'))
+    rows = (await GET(route, as('adam'))).data
+    if (rows.some(r => r.role === original.role && r.email === added.email.toLowerCase())) await HTTP_DELETE(`${route}?role=${encodeURIComponent(added.role)}&email=${encodeURIComponent(added.email.toLowerCase())}`, as('adam'))
     rows = (await GET(route, as('adam'))).data
     assert.ok(rows.some(r => r.role === original.role && r.email === original.email))
     assert.ok(!rows.some(r => r.email === added.email.toLowerCase()))
+  })
+
+  test('Graph mail failures are returned to the caller instead of reported as sent', async () => {
+    const cds = require('@sap/cds'), adapter = require('../srv/lib/mail')
+    const previousKind = cds.env.requires.vob.mail, originalConnect = cds.connect.to
+    cds.env.requires.vob.mail = 'graph'
+    cds.connect.to = async name => name === 'vob-graph' ? { send: async () => { throw new Error('Synthetic Graph outage') } } : originalConnect.call(cds.connect, name)
+    try {
+      await assert.rejects(adapter.send({ to: 'test@example.test', template: 'invite', data: { companyName: 'Mail Test Ltd', ref: 'VOB-2026-00001' } }), e => e.status === 424 && e.code === 'EMAIL_FAILED')
+    } finally {
+      cds.connect.to = originalConnect
+      cds.env.requires.vob.mail = previousKind
+    }
   })
 
   test('retention anonymises closed requests after the configured months; recent ones are kept', async () => {
@@ -474,6 +505,17 @@ describe('vendor onboarding journey', () => {
     try {
       assert.equal((await GET('/api/portal/me', r.session.h)).data.privacyNoticeUrl, 'https://privacy.example.test/vendors')
     } finally { await PUT('/api/internal/admin/config/Settings', { name: 'privacyNoticeUrl', value: '' }, as('adam')) }
+  })
+
+  test('numeric timing and retention settings reject unsafe ranges', async () => {
+    for (const [name, value] of [['retentionMonthsClosed', '0'], ['retentionMonthsClosed', '-1'], ['retentionMonthsClosed', '1.5'], ['retentionMonthsClosed', '121'], ['reminderDays', '0'], ['bankReminderDays', '31']]) {
+      await fails(PUT('/api/internal/admin/config/Settings', { name, value }, as('adam')), 422)
+    }
+    const original = await SELECT.one.from('jones.vob.Settings').where({ name: 'retentionMonthsClosed' })
+    await PUT('/api/internal/admin/config/Settings', { name: 'retentionMonthsClosed', value: '18' }, as('adam'))
+    try { assert.equal((await SELECT.one.from('jones.vob.Settings').where({ name: 'retentionMonthsClosed' })).value, '18') } finally {
+      await PUT('/api/internal/admin/config/Settings', { name: 'retentionMonthsClosed', value: original.value }, as('adam'))
+    }
   })
 
   test('IN_FINANCE route: requester review off, call-back gated, fresh after bank send-back', async () => {
