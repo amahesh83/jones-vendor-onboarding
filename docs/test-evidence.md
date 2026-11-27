@@ -72,7 +72,7 @@ The independent review found that internal request detail responses exposed call
 - uses the same redacted detail projection in the staff UI;
 - removes approval comments on retention and scrubs existing audit messages/details and vendor actor identifiers while preserving event/time and staff actor.
 
-Local verification for this patch: `npm test` **34/34 passed** (exit code 0, 80.6 seconds); `npm run lint` passed with zero warnings; `git diff --check` passed. Full Playwright and CI for this revision are pending. Live BTP Audit Log delivery remains unverified.
+Latest local verification after follow-up fixes: `npm test` **35/35 passed** (exit code 0, 15.8 seconds); `npm run lint` passed with zero warnings; `git diff --check` passed. Targeted Playwright journey 06 passed after the test explicitly reveals bank data before entering callback evidence. A full-suite run on the prior security commit passed 18/19 (all four viewport/theme traversals passed); the one failure was this missing reveal/person-spoken-to action, now corrected and rechecked in isolation. Full Playwright and CI for the current revision are pending. Live BTP Audit Log delivery remains unverified.
 
 ## Coverage (`npm run coverage`)
 

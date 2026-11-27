@@ -33,7 +33,18 @@ function redactKnownBankValues (value, r) {
     r.sortCode && V.formatSortCode(r.sortCode), r.bic, r.bankContactPhone, r.bankContactName, r.bankName, r.bankAddress,
   ].map(v => String(v || '').trim()).filter(v => v.length >= 5))]
   if (typeof value === 'string') {
-    return secrets.reduce((out, secret) => out.replace(new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '[restricted]'), value)
+    let out = value
+    for (const secret of secrets) {
+      out = out.replace(new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '[restricted]')
+      const compact = secret.replace(/[^A-Z0-9]/gi, '')
+      if (compact.length >= 6 && /^[A-Z0-9]+$/i.test(compact)) {
+        const separated = compact.split('').map(ch => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\s.()-]*')
+        out = out.replace(new RegExp(separated, 'gi'), '[restricted]')
+      }
+      const digits = secret.replace(/\D/g, '')
+      if (digits.length >= 8) out = out.replace(new RegExp(digits.split('').join('[\\s.()-]*'), 'g'), '[restricted]')
+    }
+    return out
   }
   if (Array.isArray(value)) return value.map(v => redactKnownBankValues(v, r))
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactKnownBankValues(v, r)]))
@@ -549,7 +560,7 @@ async function recordBankVerification (actor, id, input) {
   await INSERT.into(E.B).entries(row)
   const src = { INDEPENDENT_BANK: 'number from the bank', INDEPENDENT_WEBSITE: 'number from the vendor\'s website', EXISTING_RECORD: 'number already on file', VENDOR_PROVIDED: 'number given on the form (not independent)' }[row.numberSource]
   await U.audit(id, actor, 'BANK_CALLBACK', `Call-back ${row.outcome === 'CONFIRMED' ? 'confirmed' : 'NOT confirmed'}: spoke to ${row.personSpokenTo} on ${row.numberCalled} (${src})`)
-  return row
+  return { outcome: row.outcome, round: row.round, recordedAt: row.recordedAt }
 }
 
 function financeDefaults (r, cfg) {
@@ -875,7 +886,7 @@ async function detail (actor, id, { revealBank = false } = {}) {
   ])
   const reveal = revealBank && canSeeBank(actor)
   if (revealBank && !reveal) fail(403, 'NOT_ALLOWED', 'Only the bank verifier, Financial Controller or admin can see full bank details.')
-  if (reveal && r.iban) await U.audit(id, actor, 'BANK_DATA_VIEWED', 'Full bank details viewed')
+  if (reveal && (r.iban || r.bankAccountNo)) await U.audit(id, actor, 'BANK_DATA_VIEWED', 'Full bank details viewed')
   const data = {}
   for (const k of VENDOR_FIELDS) data[k] = r[k] ?? null
   data.notVatRegistered = !!r.notVatRegistered
@@ -973,7 +984,7 @@ async function detail (actor, id, { revealBank = false } = {}) {
       resend: (owner || isAdmin(actor)) && ['INVITED', 'IN_PROGRESS', 'RETURNED', 'EXPIRED'].includes(r.status),
       changeEmail: (owner || isAdmin(actor)) && r.status === 'INVITED',
       cancel: (owner || isAdmin(actor)) && !CLOSED.includes(r.status) && r.status !== 'CREATING',
-      revealBank: canSeeBank(actor) && !!r.iban && !reveal,
+      revealBank: canSeeBank(actor) && !!(r.iban || r.bankAccountNo) && !reveal,
       pdf: r.round > 0 && canSeeBank(actor),
     },
     options: {

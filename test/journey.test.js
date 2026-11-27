@@ -90,7 +90,13 @@ describe('vendor onboarding journey', () => {
     assert.equal(d.request.status, 'PENDING_PROCUREMENT')
     await POST(`/api/internal/requests/${id}/approve`, {}, as('priya'))
     await fails(POST(`/api/internal/requests/${id}/approve`, {}, as('ben')), 409, /call-back/)
-    await POST(`/api/internal/requests/${id}/bank-verification`, { numberCalled: '+353 1 555 0000', numberSource: 'INDEPENDENT_BANK', personSpokenTo: 'Callback Sentinel', outcome: 'CONFIRMED' }, as('ben'))
+    const callback = await POST(`/api/internal/requests/${id}/bank-verification`, { numberCalled: '+353 1 555 0000', numberSource: 'INDEPENDENT_BANK', personSpokenTo: 'Callback Sentinel', outcome: 'CONFIRMED' }, as('ben'))
+    assert.equal(callback.data.outcome, 'CONFIRMED')
+    assert.equal(callback.data.round, 1)
+    assert.ok(callback.data.recordedAt)
+    assert.equal(callback.data.ibanChecked, undefined)
+    assert.equal(callback.data.numberCalled, undefined)
+    assert.ok(!JSON.stringify(callback.data).includes('IE29AIBK93115212345678'))
     await POST(`/api/internal/requests/${id}/approve`, {}, as('ben'))
     await fails(POST(`/api/internal/requests/${id}/approve`, {}, as('fiona')), 409, /Simulate/)
     d = (await GET(`/api/internal/requests/${id}`, as('fiona'))).data
@@ -115,19 +121,21 @@ describe('vendor onboarding journey', () => {
 
   test('bank data is role-projected across detail, evidence downloads and FIN-010', async () => {
     const secretIban = 'IE29AIBK93115212345678'
+    const separatedIban = 'IE29-AIBK-9311-5212-3456-78'
+    const separatedSortCode = '93 11 52'
     const secretPhone = '+353 1 555 0000'
     const secretBic = 'AIBKIE2D'
     const bankLetter = await SELECT.one.from('jones.vob.RequestDocuments').columns('ID').where({ request_ID: id, docType: 'BANK_LETTER' })
     await UPDATE('jones.vob.VendorRequests').set({
-      businessReason: `Justification includes ${secretIban} ${secretPhone} ${secretBic}`,
+      businessReason: `Justification includes ${separatedIban} ${separatedSortCode} ${secretPhone} ${secretBic}`,
       rejectReason: `Reason includes ${secretIban}`,
-      sapSimulationJson: JSON.stringify({ ok: false, plain: `SAP says ${secretIban}`, messages: [{ type: 'E', text: `Bank key ${secretIban}`, field: 'bank.iban' }] }),
+      sapSimulationJson: JSON.stringify({ ok: false, plain: `SAP says ${separatedIban} and ${separatedSortCode}`, messages: [{ type: 'E', text: `Bank key ${secretIban}`, field: 'bank.iban' }] }),
       sapMessagesJson: JSON.stringify({ messages: [{ type: 'E', text: `SAP echoed ${secretPhone} ${secretBic}`, field: 'bank.iban' }] }),
     }).where({ ID: id })
     await UPDATE('jones.vob.RequestDocuments').set({ fileName: `evidence-${secretIban}.pdf` }).where({ ID: bankLetter.ID })
     const detail = (await GET(`/api/internal/requests/${id}`, as('rachel'))).data
     const serialized = JSON.stringify(detail)
-    for (const secret of [secretIban, '931152', secretPhone, secretBic, 'Callback Sentinel']) assert.ok(!serialized.includes(secret), `request detail exposed ${secret}`)
+    for (const secret of [secretIban, separatedIban, separatedSortCode, '931152', secretPhone, secretBic, 'Callback Sentinel']) assert.ok(!serialized.includes(secret), `request detail exposed ${secret}`)
     assert.ok(!serialized.includes(`evidence-${secretIban}`))
     assert.ok(detail.simulation.messages.every(m => m.text === undefined))
     assert.ok(detail.sap.messages.every(m => m.text === undefined))
@@ -159,6 +167,37 @@ describe('vendor onboarding journey', () => {
       assert.equal(documentResponse.headers['content-type'], 'application/pdf')
       assert.equal(seen.filter(x => x.event === 'SensitiveDataRead').length, 2)
       assert.ok(seen.every(x => !JSON.stringify(x).includes('IE29AIBK93115212345678')))
+    } finally { auditLog.log = original }
+  })
+
+  test('non-IBAN bank-account reveal is permissioned and audited; callback response omits account data', async () => {
+    const request = (await POST('/api/internal/requests', {
+      companyName: 'US Routing Regression Ltd', vendorContactName: 'Taylor Example', vendorEmail: 'us-routing@example.test',
+      accountType: 'YBIV', paymentTerms: '60EOM', currency: 'USD', country: 'US', businessReason: 'Synthetic security test',
+    }, as('rachel'))).data
+    await UPDATE('jones.vob.VendorRequests').set({
+      status: 'PENDING_BANK_CHECK', round: 1, currentStep: 'BANK_CHECK',
+      bankAccountNo: '12345678', sortCode: '021000021', iban: null, bic: 'CHASUS33',
+      bankName: 'Example US Bank', bankAddress: '1 Test Street, Boston', bankContactName: 'Taylor Example', bankContactPhone: '+16175550123',
+    }).where({ ID: request.ID })
+
+    const masked = (await GET(`/api/internal/requests/${request.ID}`, as('rachel'))).data
+    assert.ok(masked.data.bankAccountNo.includes('•'))
+    assert.equal(masked.allowed.revealBank, false)
+    await fails(GET(`/api/internal/requests/${request.ID}?reveal=bank`, as('rachel')), 403)
+
+    const auditLog = await cds.connect.to('audit-log')
+    const original = auditLog.log, seen = []
+    auditLog.log = async (event, data) => { seen.push({ event, data }) }
+    try {
+      const revealed = (await GET(`/api/internal/requests/${request.ID}?reveal=bank`, as('ben'))).data
+      assert.equal(revealed.data.bankAccountNo, '12345678')
+      assert.ok(seen.some(x => x.event === 'SensitiveDataRead' && x.data.attributes.some(a => a.name === 'bankAccountNo')))
+      const callback = await POST(`/api/internal/requests/${request.ID}/bank-verification`, {
+        numberCalled: '+16175550123', numberSource: 'INDEPENDENT_BANK', personSpokenTo: 'Taylor Example', outcome: 'CONFIRMED',
+      }, as('ben'))
+      assert.deepEqual(Object.keys(callback.data).sort(), ['outcome', 'recordedAt', 'round'])
+      assert.ok(!JSON.stringify(callback.data).includes('12345678'))
     } finally { auditLog.log = original }
   })
 

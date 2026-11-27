@@ -105,7 +105,7 @@ test('06 exact SAP VAT duplicate blocks finance until justified', async ({ page 
   await openVendor(page, { ...r, devLink: m.actionUrl })
   await page.locator('[data-step="tax"]').click(); await page.locator('#f_vatNumber').fill('IE6388047V'); await page.locator('#next').click(); await submit(page)
   await approve(page, r.ID, 'rachel');
-  await detail(page, r.ID, 'ben'); await page.locator('#bNum').fill('+35315550123'); await page.locator('[data-out="CONFIRMED"]').click(); await page.locator('#bSave').click(); await page.locator('#approve').click()
+  await detail(page, r.ID, 'ben'); await page.locator('#reveal2').click(); await expect(page.locator('#bWho')).toHaveValue(/.+/); await page.locator('#bNum').fill('+35315550123'); await page.locator('[data-out="CONFIRMED"]').click(); await page.locator('#bSave').click(); await expect(page.locator('#approve')).toBeEnabled(); await page.locator('#approve').click()
   await detail(page, r.ID, 'fiona'); await page.locator('#fSim').click()
   await expect(page.locator('#approve')).toBeDisabled()
   await page.locator('#justText').fill('Separate legal entity confirmed by the financial controller.'); await page.locator('#justBtn').click()
