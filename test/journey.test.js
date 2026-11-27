@@ -498,7 +498,12 @@ describe('vendor onboarding journey', () => {
 
       failVendorNotice = false
       const one = failures.data.find(n => n.request_ID === request.ID)
-      await POST(`/api/internal/admin/notifications/${one.ID}/retry`, {}, as('adam'))
+      const retried = await Promise.allSettled([
+        POST(`/api/internal/admin/notifications/${one.ID}/retry`, {}, as('adam')),
+        POST(`/api/internal/admin/notifications/${one.ID}/retry`, {}, as('adam')),
+      ])
+      assert.equal(retried.filter(x => x.status === 'fulfilled').length, 1)
+      assert.equal(retried.find(x => x.status === 'rejected').reason.response.status, 409)
       await R.idle()
       vendor = await SELECT.one.from('jones.vob.VendorRequests').where({ ID: request.ID })
       job = await SELECT.one.from('jones.vob.SapCreationJobs').where({ requestId: request.ID })
@@ -509,6 +514,13 @@ describe('vendor onboarding journey', () => {
       assert.equal(delivered.filter(email => email === emails.requesterEmail).length, 1)
       assert.equal(delivered.filter(email => email === emails.vendorEmail).length, 1)
       assert.equal(failures.data.filter(n => n.request_ID === request.ID).length, 0)
+      const staleId = cds.utils.uuid()
+      await cds.tx(() => INSERT.into('jones.vob.Notifications').entries({
+        ID: staleId, request_ID: request.ID, toAddress: emails.requesterEmail, subject: 'Stale failed attempt', template: 'createdRequester', channel: 'graph', status: 'FAILED', error: 'simulated crash gap', createdAt: new Date().toISOString(),
+      }))
+      await R.sendCreatedNotifications(request.ID)
+      assert.equal((await SELECT.one.from('jones.vob.Notifications').where({ ID: staleId })).status, 'RETRIED')
+      assert.equal(delivered.filter(email => email === emails.requesterEmail).length, 1)
     } finally {
       cds.connect.to = originalConnect
       mock.createVendor = originalCreate

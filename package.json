@@ -113,7 +113,8 @@
         "vob-graph": {
           "kind": "rest",
           "credentials": {
-            "destination": "VOB_GRAPH"
+            "destination": "VOB_GRAPH",
+            "requestTimeout": 30000
           }
         }
       }

@@ -7,6 +7,10 @@ const stamp = () => new Date().toISOString()
 async function enqueue (requestId) {
   await UPSERT.into(JOBS).entries({ requestId, state: 'READY', attempts: 0, nextAttemptAt: stamp(), leaseUntil: null, owner: null, lastError: null })
 }
+async function retryFailed (requestId) {
+  const changed = await UPDATE(JOBS).set({ state: 'READY', attempts: 0, nextAttemptAt: stamp(), leaseUntil: null, owner: null, lastError: null }).where({ requestId, state: 'FAILED' })
+  return Number(changed) > 0
+}
 async function drain () {
   const jobs = await cds.tx(() => SELECT.from(JOBS).where`(state = 'READY' and nextAttemptAt <= ${stamp()}) or (state = 'WORKING' and leaseUntil < ${stamp()})`)
   for (const job of jobs) {
@@ -62,4 +66,4 @@ async function idle () {
   }
   throw new Error('SAP queue did not become idle')
 }
-module.exports = { enqueue, flush, idle }
+module.exports = { enqueue, retryFailed, flush, idle }

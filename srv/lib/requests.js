@@ -756,6 +756,11 @@ async function sendCreatedNotifications (id) {
   const cfg = await config(), link = internalLink(cfg, id)
   const sentRows = await SELECT.from(E.N).columns('template').where({ request_ID: id, status: 'SENT' })
   const sent = new Set(sentRows.map(n => n.template))
+  // Recover a crash after SENT was committed but before prior failed attempts
+  // were marked RETRIED. A successful template is authoritative; never resend it.
+  for (const template of sent) {
+    await cds.tx(() => UPDATE(E.N).set({ status: 'RETRIED' }).where({ request_ID: id, template, status: 'FAILED' }))
+  }
   const notices = [
     { template: 'createdRequester', to: r.requesterEmail, actionUrl: link, data: { companyName: r.companyName, vendorNumber: r.sapVendorNumber, companyCode: r.companyCode, link } },
     { template: 'createdVendor', to: r.vendorEmail, data: { contactName: r.vendorContactName, companyName: r.companyName, vendorNumber: r.sapVendorNumber } },
