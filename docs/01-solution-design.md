@@ -324,7 +324,7 @@ Codex must keep the SAP targets **configurable** where marked ⚙. Items marked 
 | Approver directory | Role → notification email list |
 | Settings | Invite expiry (30 days), reminder days, escalation days, OTP lifetime, retention, sender address, portal base URL, privacy notice URL, feature flags, requesterReviewEnabled (default true) |
 
-Admin-editable tables get their starting values from `srv/seed/` when the app starts: only empty tables, plus any missing setting names. They are not HDI table data, so a redeploy never overwrites business changes (deviation D10). The role directory is not seeded in production. Countries, currencies and WHT codes stay deployment-managed in `db/data`.
+Admin-editable tables get their starting values from `srv/seed/` when the app starts: only empty tables, plus any missing setting names. They are not HDI table data, so a redeploy never overwrites business changes (deviation D10). The role directory is not seeded in production; Admin → Configuration lets master data admins maintain notification recipients, warns when a role pool is empty, and prevents removing the last recipient from a pool. Populate every role pool before live approvals. Countries, currencies and WHT codes stay deployment-managed in `db/data`.
 
 ---
 

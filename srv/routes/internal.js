@@ -7,6 +7,7 @@
 const express = require('express')
 const R = require('../lib/requests')
 const W = require('../lib/workflow')
+const V = require('../lib/validation')
 const { sap } = require('../lib/sap')
 const { fail } = require('../lib/util')
 const { handle } = require('./http')
@@ -97,6 +98,42 @@ router.get('/requests/:id/fin010.pdf', async (req, res, next) => {
 
 // Admin
 const adminOnly = req => { const a = actorOf(req); if (!a.roles.includes(W.ROLES.ADMIN)) fail(403, 'NOT_ALLOWED', 'Only master data admins can do this.'); return a }
+const NOTIFICATION_ROLES = [W.ROLES.PURCHASING, W.ROLES.PROCUREMENT, W.ROLES.BANK_CHECK, W.ROLES.FINANCE, W.ROLES.ADMIN]
+
+router.get('/admin/role-directory', handle(async req => {
+  adminOnly(req)
+  return SELECT.from('jones.vob.RoleDirectory').orderBy('role', 'name', 'email')
+}))
+
+router.post('/admin/role-directory', handle(async req => {
+  const actor = adminOnly(req), input = req.body || {}
+  const role = String(input.role || '').trim()
+  const email = String(input.email || '').trim().toLowerCase()
+  const name = String(input.name || '').trim()
+  if (!NOTIFICATION_ROLES.includes(role)) fail(422, 'INVALID', 'Choose a notification role: Purchasing, Procurement, Bank Check, Finance or Admin.')
+  const emailError = V.checkEmail(email)
+  if (emailError) fail(422, 'INVALID', emailError)
+  if (!name || name.length > 120) fail(422, 'INVALID', 'Enter a name of 1 to 120 characters.')
+  const key = { role, email }
+  const existing = await SELECT.one.from('jones.vob.RoleDirectory').where(key)
+  if (existing) await UPDATE('jones.vob.RoleDirectory').set({ name }).where(key)
+  else await INSERT.into('jones.vob.RoleDirectory').entries({ ...key, name })
+  await require('../lib/util').audit(null, actor, 'CONFIG_CHANGED', `Approver directory ${role} recipient updated`)
+  return { ok: true }
+}))
+
+router.delete('/admin/role-directory', handle(async req => {
+  const actor = adminOnly(req)
+  const role = String(req.query.role || '').trim(), email = String(req.query.email || '').trim().toLowerCase()
+  if (!NOTIFICATION_ROLES.includes(role) || !email) fail(422, 'INVALID', 'Choose a valid notification role and email address.')
+  const existing = await SELECT.one.from('jones.vob.RoleDirectory').where({ role, email })
+  if (!existing) fail(404, 'NOT_FOUND', 'That approver is not in the directory.')
+  const count = await SELECT.from('jones.vob.RoleDirectory').where({ role })
+  if (count.length <= 1) fail(409, 'LAST_RECIPIENT', 'Add another recipient for this role before removing the last one.')
+  await DELETE.from('jones.vob.RoleDirectory').where({ role, email })
+  await require('../lib/util').audit(null, actor, 'CONFIG_CHANGED', `Approver directory ${role} recipient removed`)
+  return { ok: true }
+}))
 
 function routeInput (input, cfg) {
   const A = require('../lib/approval-routes')
@@ -148,7 +185,6 @@ const EDITABLE = {
   AccountTypes: { key: ['code'], fields: ['label', 'help', 'reconAccount', 'whtType'] },
   DocumentTypes: { key: ['code'], fields: ['label', 'help', 'needsValidUntil', 'requiredFor', 'countries'] },
   CompanyCodes: { key: ['code'], fields: ['name', 'purchasingOrg', 'active'] },
-  RoleDirectory: { key: ['role', 'email'], fields: ['name'], insert: true, remove: true },
 }
 
 router.put('/admin/config/:table', handle(async req => {

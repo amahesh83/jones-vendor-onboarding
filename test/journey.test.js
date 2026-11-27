@@ -8,7 +8,7 @@ const path = require('path')
 const V = require('../srv/lib/validation')
 const { EICAR } = require('../srv/lib/files')
 
-const { GET, POST, PUT } = cds.test(path.join(__dirname, '..'))
+const { GET, POST, PUT, DELETE: HTTP_DELETE } = cds.test(path.join(__dirname, '..'))
 const as = id => ({ auth: { username: id, password: '' }, headers: { 'x-requested-with': 'VOB' } })
 const fails = async (p, status, re) => {
   try { await p } catch (e) { assert.equal(e.status ?? e.response?.status, status); if (re) assert.match(JSON.stringify(e.response?.data || e.message), re); return }
@@ -205,6 +205,10 @@ describe('vendor onboarding journey', () => {
       assert.equal(shortValues.data.sortCode, '••1')
       assert.ok(!shortValues.request.businessReason.includes('1234'))
       assert.ok(!shortValues.request.businessReason.includes('021'))
+      const vendor = await vendorSession(request.devLink)
+      const vendorMasked = (await GET('/api/portal/me', vendor.h)).data
+      assert.equal(vendorMasked.data.bankAccountNo, '•••4')
+      assert.equal(vendorMasked.data.sortCode, '••1')
     } finally { auditLog.log = original }
   })
 
@@ -398,6 +402,31 @@ describe('vendor onboarding journey', () => {
     // Admin-editable tables are no longer HDI table data (a redeploy would overwrite them).
     const fs = require('fs')
     for (const t of seed.TABLES) assert.ok(!fs.existsSync(`db/data/jones.vob-${t}.csv`), `${t} must not be in db/data`)
+  })
+
+  test('approver directory is admin-managed, validates recipients and protects non-empty pools', async () => {
+    const route = '/api/internal/admin/role-directory'
+    const original = { role: 'VOB_ProcurementApprover', email: 'priya.procurement@jones.test', name: 'Priya Procurement' }
+    const added = { role: original.role, email: 'NEW.PROCUREMENT@EXAMPLE.TEST', name: 'Test Procurement' }
+    await fails(GET(route, as('rachel')), 403)
+    await fails(POST(route, { ...added, email: 'bad' }, as('rachel')), 403)
+    await fails(PUT('/api/internal/admin/config/RoleDirectory', original, as('adam')), 400)
+    await fails(POST(route, { ...added, role: 'VOB_Auditor' }, as('adam')), 422)
+    await fails(POST(route, { ...added, email: 'bad' }, as('adam')), 422)
+    await fails(POST(route, { ...added, name: ' ' }, as('adam')), 422)
+    await assert.rejects(require('../srv/lib/mail').roleRecipients('VOB_Unconfigured'), e => e.status === 503 && e.code === 'MISSING_RECIPIENTS')
+    await fails(HTTP_DELETE(`${route}?role=${encodeURIComponent(original.role)}&email=${encodeURIComponent(original.email)}`, as('adam')), 409)
+
+    await POST(route, added, as('adam'))
+    let rows = (await GET(route, as('adam'))).data
+    assert.ok(rows.some(r => r.role === added.role && r.email === added.email.toLowerCase() && r.name === added.name))
+    await HTTP_DELETE(`${route}?role=${encodeURIComponent(original.role)}&email=${encodeURIComponent(original.email)}`, as('adam'))
+    await fails(HTTP_DELETE(`${route}?role=${encodeURIComponent(added.role)}&email=${encodeURIComponent(added.email.toLowerCase())}`, as('adam')), 409)
+    await POST(route, original, as('adam'))
+    await HTTP_DELETE(`${route}?role=${encodeURIComponent(added.role)}&email=${encodeURIComponent(added.email.toLowerCase())}`, as('adam'))
+    rows = (await GET(route, as('adam'))).data
+    assert.ok(rows.some(r => r.role === original.role && r.email === original.email))
+    assert.ok(!rows.some(r => r.email === added.email.toLowerCase()))
   })
 
   test('retention anonymises closed requests after the configured months; recent ones are kept', async () => {

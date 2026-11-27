@@ -10,7 +10,7 @@
  */
 const cds = require('@sap/cds')
 const { T } = require('./templates')
-const { iso, now, settings, isProduction } = require('../util')
+const { iso, now, settings, isProduction, fail } = require('../util')
 
 const kind = () => cds.env.requires?.vob?.mail || 'local'
 
@@ -57,6 +57,7 @@ async function send ({ to, template, data, requestId, actionUrl, code }) {
 /** Email addresses for an approver role from the admin-maintained directory. */
 async function roleRecipients (role) {
   const rows = await SELECT.from('jones.vob.RoleDirectory').where({ role })
+  if (!rows.length) fail(503, 'MISSING_RECIPIENTS', `No email recipients are configured for ${role}. Ask a master data admin to add the role in Admin → Configuration before continuing.`)
   return rows.map(r => r.email)
 }
 

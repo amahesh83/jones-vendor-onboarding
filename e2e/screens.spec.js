@@ -32,6 +32,15 @@ test('all screens: responsive layout, keyboard and axe', async ({ page, context 
   for (const [hash, label] of [['/requests?view=all', 'requests'], ['/admin/sap-errors', 'sap-errors'], ['/admin/connection', 'connection'], ['/admin/config', 'configuration'], ['/admin/routes', 'approval-routes'], ['/mailbox', 'mailbox']]) {
     await page.goto('/internal/#' + hash); await page.reload(); await page.locator('#app .card, #app .list-card').first().waitFor(); await scan(label)
   }
+  await page.goto('/internal/#/admin/config')
+  const recipientEmail = `screen-${info.project.name}@example.test`
+  await page.locator('#dirRole').selectOption('VOB_FinancialController')
+  await page.locator('#dirName').fill('Screen Test Recipient')
+  await page.locator('#dirEmail').fill(recipientEmail)
+  await page.getByRole('button', { name: 'Add or update recipient' }).click()
+  await H.expect(page.locator('#dir')).toContainText(recipientEmail)
+  await page.locator(`[data-dir-delete][data-dir-email="${recipientEmail}"]`).click()
+  await H.expect(page.locator('#dir')).not.toContainText(recipientEmail)
   const cfg = await (await page.request.get('/api/internal/config')).json()
   const save = async routes => {
     await H.login(page, 'adam')

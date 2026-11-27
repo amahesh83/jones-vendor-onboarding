@@ -233,8 +233,8 @@ async function vendorView (r) {
   const bankLocked = st.editable && r.round > 0 && !!(r.iban || r.bankAccountNo)
   if (!st.editable || bankLocked) {
     data.iban = V.maskIban(r.iban)
-    data.bankAccountNo = V.maskTail(r.bankAccountNo)
-    data.sortCode = r.sortCode ? '••••' + String(r.sortCode).slice(-2) : null
+    data.bankAccountNo = maskBankNumber(r.bankAccountNo)
+    data.sortCode = maskBankNumber(r.sortCode)
   }
   const docs = await SELECT.from(E.D).columns('ID', 'docType', 'fileName', 'size', 'validUntil', 'scanStatus', 'uploadedAt').where({ request_ID: r.ID })
   return {
