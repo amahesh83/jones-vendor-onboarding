@@ -30,8 +30,9 @@ const CLOSED = ['CREATED', 'REJECTED', 'CANCELLED', 'EXPIRED']
 function maskBankNumber (value) {
   const s = String(value || '').replace(/\s/g, '')
   if (!s) return null
-  const visible = Math.min(4, Math.max(0, s.length - 1))
-  return `••••${visible ? s.slice(-visible) : ''}`
+  const visible = s.length <= 4 ? 1 : 4
+  const hidden = s.length <= 4 ? s.length - visible : 4
+  return `${'•'.repeat(hidden)}${s.slice(-visible)}`
 }
 
 function redactKnownBankValues (value, r) {

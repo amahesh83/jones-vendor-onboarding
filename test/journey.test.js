@@ -201,8 +201,8 @@ describe('vendor onboarding journey', () => {
 
       await UPDATE('jones.vob.VendorRequests').set({ bankAccountNo: '1234', sortCode: '021', businessReason: 'Test with short account 1234 and routing code 021.' }).where({ ID: request.ID })
       const shortValues = (await GET(`/api/internal/requests/${request.ID}`, as('rachel'))).data
-      assert.equal(shortValues.data.bankAccountNo, '••••234')
-      assert.equal(shortValues.data.sortCode, '••••21')
+      assert.equal(shortValues.data.bankAccountNo, '•••4')
+      assert.equal(shortValues.data.sortCode, '••1')
       assert.ok(!shortValues.request.businessReason.includes('1234'))
       assert.ok(!shortValues.request.businessReason.includes('021'))
     } finally { auditLog.log = original }
