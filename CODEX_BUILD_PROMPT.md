@@ -1,4 +1,4 @@
-> **Owner handover — 2026-11-10:** Claude Code now owns review, fixes, testing and completion end to end. Start with [CLAUDE_CODE_PROMPT.md](CLAUDE_CODE_PROMPT.md) and [the handover](docs/CLAUDE_CODE_HANDOVER.md). This file is the historical build/acceptance brief. Its old Codex-dependent and review-only workflow is superseded.
+> **Current owner — 2026-11-27:** Codex owns continuation, implementation, independent review and authorized merge of existing PR #2. This file remains the acceptance brief; follow [AGENTS.md](AGENTS.md) for current workflow. The 2026-11-10 Claude takeover text below is historical and superseded.
 
 > **ADR-003 supersession (2026-11-10):** Approval routes are configurable and snapshotted at submission. The old fixed-chain references below are superseded by [ADR-003](docs/decisions/ADR-003-configurable-approval-routes.md) and design §6. ADR-002 supersedes UI5/Fiori implementation details. Keep the 13 acceptance scenarios, adapting expected steps to the saved route.
 
@@ -257,6 +257,6 @@ Start with the line `READY FOR REVIEW`, then:
 
 ---
 
-## Current Claude Code takeover
+## Historical Claude Code takeover (superseded 2026-11-27)
 
-The former review-only prompt is retired by the owner. Use [CLAUDE_CODE_PROMPT.md](CLAUDE_CODE_PROMPT.md). Claude must review, fix, test and complete the work directly on build/v1 and existing draft PR #2. No Codex fix-prompt loop or wait for Codex is required.
+The owner returned project ownership to Codex because Claude Code has no available usage. Do not use the former takeover prompt; use the current workflow in [AGENTS.md](AGENTS.md).

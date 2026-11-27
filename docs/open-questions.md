@@ -1,4 +1,4 @@
-# Open questions at Claude Code takeover
+# Open questions (ownership returned to Codex 2026-11-27)
 
 The detailed questions and provisional defaults remain in solution design §13. Do not invent Jones SAP values. Use its documented defaults while working with synthetic data, and record confirmed answers here.
 

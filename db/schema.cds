@@ -165,7 +165,7 @@ entity RequestVersions : cuid {
   createdAt : Timestamp;
 }
 
-/** Append-only business audit trail (there is no update/delete path in the app). */
+/** Business audit trail; retention may scrub event details while preserving type, time and staff actor. */
 entity AuditEvents : cuid {
   request   : Association to VendorRequests;
   at        : Timestamp;

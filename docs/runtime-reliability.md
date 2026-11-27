@@ -16,6 +16,6 @@ The mock SAP adapter is process-local. The restart test exercises recovery of un
 
 `@cap-js/audit-logging` is pinned as a runtime dependency. Development/test use its console implementation; production selects its REST v2 implementation and needs an existing bound Audit Log service named `vob-audit-log`. Basis must provision a write-capable service instance supported by the account; an entitlement for retrieval alone is insufficient.
 
-The application keeps its append-only business timeline. Custom Express routes bypass generic CAP service handlers, so unmasked bank reads explicitly call `SensitiveDataRead`, identifying the actor, request and field names without including bank values. Personal-data annotations remain on the model, with the vendor request identified as the data subject.
+The application keeps its business timeline with event-specific labels rather than free-text payloads. Retention scrubs older event details and vendor actor identifiers while preserving event type, timestamp and staff actor. Custom Express routes bypass generic CAP service handlers, so authorized bank-data reveals, bank-letter opens and full FIN-010 downloads explicitly call `SensitiveDataRead`, identifying the actor, request and field names without including bank values. Personal-data annotations remain on the model, with the vendor request identified as the data subject.
 
 Local tests verify plugin invocation. Real BTP Audit Log delivery and operational retrieval are go-live checks and have not been exercised here.

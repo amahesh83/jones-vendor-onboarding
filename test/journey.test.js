@@ -90,7 +90,7 @@ describe('vendor onboarding journey', () => {
     assert.equal(d.request.status, 'PENDING_PROCUREMENT')
     await POST(`/api/internal/requests/${id}/approve`, {}, as('priya'))
     await fails(POST(`/api/internal/requests/${id}/approve`, {}, as('ben')), 409, /call-back/)
-    await POST(`/api/internal/requests/${id}/bank-verification`, { numberCalled: '+353 1 555 0000', numberSource: 'INDEPENDENT_BANK', personSpokenTo: 'Tess', outcome: 'CONFIRMED' }, as('ben'))
+    await POST(`/api/internal/requests/${id}/bank-verification`, { numberCalled: '+353 1 555 0000', numberSource: 'INDEPENDENT_BANK', personSpokenTo: 'Callback Sentinel', outcome: 'CONFIRMED' }, as('ben'))
     await POST(`/api/internal/requests/${id}/approve`, {}, as('ben'))
     await fails(POST(`/api/internal/requests/${id}/approve`, {}, as('fiona')), 409, /Simulate/)
     d = (await GET(`/api/internal/requests/${id}`, as('fiona'))).data
@@ -108,9 +108,58 @@ describe('vendor onboarding journey', () => {
     assert.equal(d.request.status, 'CREATED')
     assert.match(d.request.sapVendorNumber, /^8\d{5}$/)
     assert.equal(d.request.pdfAttached, true)
-    const pdfRes = await GET(`/api/internal/requests/${id}/fin010.pdf`, as('aoife'))
+    const pdfRes = await GET(`/api/internal/requests/${id}/fin010.pdf`, as('fiona'))
     assert.equal(pdfRes.headers['content-type'], 'application/pdf')
     assert.ok((await mail('createdVendor')).subject.includes(d.request.sapVendorNumber))
+  })
+
+  test('bank data is role-projected across detail, evidence downloads and FIN-010', async () => {
+    const secretIban = 'IE29AIBK93115212345678'
+    const secretPhone = '+353 1 555 0000'
+    const secretBic = 'AIBKIE2D'
+    const bankLetter = await SELECT.one.from('jones.vob.RequestDocuments').columns('ID').where({ request_ID: id, docType: 'BANK_LETTER' })
+    await UPDATE('jones.vob.VendorRequests').set({
+      businessReason: `Justification includes ${secretIban} ${secretPhone} ${secretBic}`,
+      rejectReason: `Reason includes ${secretIban}`,
+      sapSimulationJson: JSON.stringify({ ok: false, plain: `SAP says ${secretIban}`, messages: [{ type: 'E', text: `Bank key ${secretIban}`, field: 'bank.iban' }] }),
+      sapMessagesJson: JSON.stringify({ messages: [{ type: 'E', text: `SAP echoed ${secretPhone} ${secretBic}`, field: 'bank.iban' }] }),
+    }).where({ ID: id })
+    await UPDATE('jones.vob.RequestDocuments').set({ fileName: `evidence-${secretIban}.pdf` }).where({ ID: bankLetter.ID })
+    const detail = (await GET(`/api/internal/requests/${id}`, as('rachel'))).data
+    const serialized = JSON.stringify(detail)
+    for (const secret of [secretIban, '931152', secretPhone, secretBic, 'Callback Sentinel']) assert.ok(!serialized.includes(secret), `request detail exposed ${secret}`)
+    assert.ok(!serialized.includes(`evidence-${secretIban}`))
+    assert.ok(detail.simulation.messages.every(m => m.text === undefined))
+    assert.ok(detail.sap.messages.every(m => m.text === undefined))
+    assert.ok(detail.request.businessReason.includes('[restricted]'))
+    assert.ok(detail.request.rejectReason.includes('[restricted]'))
+    assert.equal(detail.data.iban.includes('•'), true)
+    assert.equal(detail.data.sortCode.includes('•'), true)
+    assert.equal(detail.data.bankContactName, null)
+    assert.equal(detail.options.vendorPhone, null)
+    assert.equal(detail.options.vendorContact, null)
+    assert.equal(detail.bankChecks[0].ibanChecked, undefined)
+    assert.equal(detail.bankChecks[0].numberCalled, undefined)
+    assert.equal(detail.bankChecks[0].personSpokenTo, undefined)
+    assert.ok(detail.events.every(e => e.message === require('../srv/lib/util').auditMessage(e.event, e.message)))
+    assert.ok(detail.events.some(e => e.event === 'BANK_CALLBACK' && /confirmed/i.test(e.message)))
+    assert.equal(detail.allowed.pdf, false)
+
+    await fails(GET(`/api/internal/requests/${id}/documents/${bankLetter.ID}`, as('rachel')), 403, /bank evidence/)
+    await fails(GET(`/api/internal/requests/${id}/documents/${bankLetter.ID}`, as('aoife')), 403, /bank evidence/)
+    await fails(GET(`/api/internal/requests/${id}/fin010.pdf`, as('aoife')), 403, /full FIN-010/)
+
+    const auditLog = await cds.connect.to('audit-log')
+    const original = auditLog.log, seen = []
+    auditLog.log = async (event, data) => { seen.push({ event, data }) }
+    try {
+      const pdfResponse = await GET(`/api/internal/requests/${id}/fin010.pdf`, as('fiona'))
+      assert.equal(pdfResponse.headers['content-type'], 'application/pdf')
+      const documentResponse = await GET(`/api/internal/requests/${id}/documents/${bankLetter.ID}`, as('fiona'))
+      assert.equal(documentResponse.headers['content-type'], 'application/pdf')
+      assert.equal(seen.filter(x => x.event === 'SensitiveDataRead').length, 2)
+      assert.ok(seen.every(x => !JSON.stringify(x).includes('IE29AIBK93115212345678')))
+    } finally { auditLog.log = original }
   })
 
   test('SAP error, admin allows bank creation, retry creates once', async () => {
@@ -236,6 +285,7 @@ describe('vendor onboarding journey', () => {
       assert.equal(seen[0].data.user, 'fiona.finance@jones.test')
       assert.equal(seen[0].data.object.id.ID, id)
       assert.ok(seen[0].data.attributes.some(a => a.name === 'iban'))
+      assert.ok(seen[0].data.attributes.some(a => a.name === 'bankContactPhone'))
       assert.ok(!JSON.stringify(seen).includes('IE29AIBK'))
     } finally { auditLog.log = original }
   })
@@ -311,6 +361,13 @@ describe('vendor onboarding journey', () => {
     for (const r of [old, recent]) await POST(`/api/internal/requests/${r.ID}/reject`, { reason: 'Synthetic retention test' }, as('rachel'))
     await cds.tx(async () => {
       await UPDATE('jones.vob.VendorRequests').set({ closedAt: new Date(Date.now() - 400 * 86400000).toISOString() }).where({ ID: old.ID })
+      // Model legacy audit content written before event-message minimisation.
+      await INSERT.into('jones.vob.AuditEvents').entries({
+        ID: cds.utils.uuid(), request_ID: old.ID, at: new Date().toISOString(), actorType: 'VENDOR',
+        actorId: 'legacy-vendor@example.test', actorName: 'Legacy Callback Person', event: 'BANK_CALLBACK',
+        message: 'Called +353 1 555 0123; confirmed IE29AIBK93115212345678 with Legacy Callback Person',
+        details: JSON.stringify({ email: 'legacy-vendor@example.test', phone: '+353 1 555 0123' }),
+      })
       const out = await R.runJobs()
       assert.equal(out.anonymised, 1)
     })
@@ -322,7 +379,12 @@ describe('vendor onboarding journey', () => {
     for (const t of ['RequestDocuments', 'RequestVersions', 'Notifications', 'InviteTokens']) {
       assert.equal((await SELECT.from(`jones.vob.${t}`).where({ request_ID: old.ID })).length, 0, t)
     }
-    assert.ok((await SELECT.from('jones.vob.AuditEvents').where({ request_ID: old.ID, event: 'ANONYMISED' })).length)
+    assert.equal((await SELECT.from('jones.vob.ApprovalSteps').where({ request_ID: old.ID })).length, 0)
+    const oldEvents = await SELECT.from('jones.vob.AuditEvents').where({ request_ID: old.ID })
+    assert.ok(oldEvents.some(e => e.event === 'ANONYMISED'))
+    const oldAuditText = JSON.stringify(oldEvents)
+    for (const secret of ['legacy-vendor@example.test', 'Legacy Callback Person', '+353 1 555 0123', 'IE29AIBK93115212345678']) assert.ok(!oldAuditText.includes(secret), `retained audit exposed ${secret}`)
+    assert.ok(oldEvents.filter(e => e.actorType === 'VENDOR').every(e => e.actorId === 'anonymised' && e.actorName === 'Vendor'))
     const kept = await SELECT.one.from('jones.vob.VendorRequests').where({ ID: recent.ID })
     assert.equal(kept.anonymisedAt, null); assert.ok(kept.iban)
     // A second run finds nothing more to do.

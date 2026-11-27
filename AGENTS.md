@@ -29,13 +29,14 @@ VOB replaces the paper/PDF form **FIN-010-IE01 Vendor Account Set up Form** (H. 
 - **CPI:** only a possible deployment-time route (the destination points at a pass-through iFlow). Keep the adapter contract in design §9 destination-agnostic and build nothing CPI-specific.
 - **Changing the decision:** do not reopen it on your own. Write any concern in `docs/deviations.md` and carry on. Only a new ADR approved by the project owner can supersede ADR-001.
 
-## Working model (owner updated 2026-11-10)
+## Working model (owner updated 2026-11-27)
 
-1. **Claude Code now owns continuation and completion end to end.** The owner explicitly requested this handover because Codex will be unavailable. This supersedes the former Codex-build / Claude-review-only arrangement.
-2. Read [`docs/CLAUDE_CODE_HANDOVER.md`](docs/CLAUDE_CODE_HANDOVER.md) and [`CLAUDE_CODE_PROMPT.md`](CLAUDE_CODE_PROMPT.md). Continue the existing implementation on `build/v1` and reuse [draft PR #2](https://github.com/amahesh83/jones-vendor-onboarding/pull/2). Do not rebuild from scratch or open a duplicate PR.
-3. Claude reviews, implements fixes, tests, updates evidence and runbooks, and handles the remaining work directly. Do not stop at a findings list or produce a fix prompt that depends on Codex returning.
-4. Keep the existing design system and working code. Preserve ADR-001/002/003 and the guardrails below. Distinguish implemented/tested mock behaviour from unverified SAP/BTP integration.
-5. Keep `npm test`, lint and e2e green, push changes to `build/v1`, and report actual results and remaining external dependencies. The existing build brief says to leave the PR unmerged; do not treat this handover alone as a new merge or production-deployment instruction.
+1. **Codex owns continuation and completion end to end.** The owner took the work back on 2026-11-27 because Claude Code has no available usage. This supersedes the 2026-11-10 Claude ownership handover.
+2. Continue the existing implementation on `build/v1` and reuse [draft PR #2](https://github.com/amahesh83/jones-vendor-onboarding/pull/2). Do not rebuild from scratch or open a duplicate PR.
+3. The root Codex chat is the project coordinator. Delegated agents may implement or review bounded work, but Codex must inspect their changes and evidence and retain responsibility. Do not claim background monitoring between turns.
+4. The owner authorized Codex to act as developer, independent reviewer and merger. Merge PR #2 only after an independent review finds no blocking issues, required checks pass on the exact head, and the PR is mergeable. This does not authorize production deployment or real SAP/BTP access.
+5. Keep the existing design system and working code. Preserve ADR-001/002/003 and the guardrails below. Distinguish implemented/tested mock behaviour from unverified SAP/BTP integration.
+6. Keep `npm test`, lint and e2e green, push changes to `build/v1`, and report actual results and remaining external dependencies.
 
 ## Sources of truth
 
@@ -44,6 +45,8 @@ VOB replaces the paper/PDF form **FIN-010-IE01 Vendor Account Set up Form** (H. 
 3. [`reference/FIN-010-IE01-Vendor-Account-Setup-Form.pdf`](reference/FIN-010-IE01-Vendor-Account-Setup-Form.pdf): the form being replaced, which is also the PDF template the app fills.
 
 Questions only Jones can answer: use the default in design §13, add the question to `docs/open-questions.md`, and keep going.
+
+The previous Claude handover is retained as historical evidence in [`docs/CLAUDE_CODE_HANDOVER.md`](docs/CLAUDE_CODE_HANDOVER.md); its ownership and unmerged-PR instructions are superseded here.
 
 ## Guardrails
 

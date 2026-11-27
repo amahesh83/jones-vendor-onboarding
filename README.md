@@ -1,6 +1,6 @@
 # Jones Vendor Onboarding (VOB)
 
-**Claude Code takeover (2026-11-10):** read [CLAUDE.md](CLAUDE.md), [the paste-in prompt](CLAUDE_CODE_PROMPT.md) and [the full handover](docs/CLAUDE_CODE_HANDOVER.md). Continue build/v1 and [draft PR #2](https://github.com/amahesh83/jones-vendor-onboarding/pull/2). Claude owns completion end to end. [Verified CI evidence](docs/test-evidence.md) and remaining external checks are recorded; do not rebuild from scratch.
+**Current owner (2026-11-27):** Codex owns implementation, independent review and the authorized merge of [existing PR #2](https://github.com/amahesh83/jones-vendor-onboarding/pull/2). Continue on `build/v1`; do not rebuild or open a duplicate PR. Read [AGENTS.md](AGENTS.md), [current evidence](docs/test-evidence.md), and the [historical Claude handover](docs/CLAUDE_CODE_HANDOVER.md). Merge only after review and all required checks pass on the exact PR head. No production deployment or real SAP/BTP access is authorized.
 
 Replaces the paper/PDF **FIN-010-IE01 Vendor Account Set up Form** (H. A. O'Neil Limited / Jones Engineering, company code IE01).
 

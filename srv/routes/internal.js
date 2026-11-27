@@ -81,7 +81,16 @@ router.get('/requests/:id/documents/:docId', async (req, res, next) => {
 router.get('/requests/:id/fin010.pdf', async (req, res, next) => {
   try {
     const cds = require('@sap/cds')
-    const pdf = await cds.tx(async () => { const a = actorOf(req); const r = await R.load(req.params.id); if (!r.round) fail(409, 'NOT_SUBMITTED', 'The vendor has not submitted yet.'); const out = await R.fin010(req.params.id); await require('../lib/util').audit(req.params.id, a, 'PDF_DOWNLOADED', 'FIN-010 PDF downloaded'); return { out, r } })
+    const pdf = await cds.tx(async () => {
+      const a = actorOf(req)
+      if (!R.canSeeBank(a)) fail(403, 'NOT_ALLOWED', 'Only the bank verifier, Financial Controller or admin can download the full FIN-010 form.')
+      const r = await R.load(req.params.id)
+      if (!r.round) fail(409, 'NOT_SUBMITTED', 'The vendor has not submitted yet.')
+      const out = await R.fin010(req.params.id)
+      await require('../lib/util').audit(req.params.id, a, 'BANK_DATA_VIEWED', 'Full FIN-010 with bank details viewed')
+      await require('../lib/util').audit(req.params.id, a, 'PDF_DOWNLOADED', 'FIN-010 PDF downloaded')
+      return { out, r }
+    })
     res.set('content-type', 'application/pdf').set('content-disposition', `inline; filename="FIN-010-${pdf.r.requestNumber}.pdf"`).send(pdf.out)
   } catch (e) { next(e) }
 })

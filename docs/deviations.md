@@ -1,6 +1,6 @@
 # Deviations from the design and build brief
 
-Claude Code owns the remaining work as of 2026-11-10; see [handover](CLAUDE_CODE_HANDOVER.md). Implementation checkpoint a456354 passed all 28 Node tests, all 19 Playwright tests, lint, ABAP parsing and Linux MTA packaging in [CI run #6](https://github.com/amahesh83/jones-vendor-onboarding/actions/runs/42808148930). Implementation/source closure below does not imply live SAP/BTP validation.
+Codex owns continuation, review and the authorized merge as of 2026-11-27; see [AGENTS.md](../AGENTS.md) and the [historical handover](CLAUDE_CODE_HANDOVER.md). Final implementation `1cceb73` passed 33 Node tests, 19 Playwright tests, lint, ABAP parsing and Linux MTA packaging in [CI run 42857157309](https://github.com/amahesh83/jones-vendor-onboarding/actions/runs/42857157309). New privacy/security fixes are being verified against this baseline. Implementation/source closure below does not imply live SAP/BTP validation.
 
 | # | Brief said | Built | Why |
 |---|---|---|---|

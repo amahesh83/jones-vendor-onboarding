@@ -43,11 +43,11 @@ Evidence for the Claude Code completion pass on 2026-11-10. Final code `1cceb73`
 | Requirement | Evidence | State |
 |---|---|---|
 | Invite token hashed; OTP 6 digits/10 min/5 attempts/lock; session cookie flags; CSRF | `journey.test.js`; e2e 11; code review of `portal-auth.js` | ✅ |
-| Bank data masked; full view only for bank verifier/FC/admin; each view audit-logged | `journey.test.js` "unmasked bank reads emit a plugin event…" | ✅ locally; live Audit Log ⛔ |
+| Bank data masked in full detail response; callback data and free-text projected by role; bank letters and FIN-010 restricted to bank verifier/FC/admin and each sensitive read audit-logged | `journey.test.js` "bank data is role-projected…" and "unmasked bank reads emit a plugin event…" | ✅ locally; live Audit Log ⛔ |
 | Server-side authorisation and SoD | `journey.test.js` (403s); e2e 07 | ✅ |
 | Upload allow-list, size, malware scan | `journey.test.js` EICAR; e2e 12 | ✅ with mock scanner; BTP scanner ⛔ |
 | CSP `script-src 'self'`, HSTS (production), nosniff, frame-deny | Code review of `server.js`; e2e runs under the CSP | ✅ |
-| **New:** Retention: anonymise rejected/expired/cancelled after 12 months | `journey.test.js` "retention anonymises…" | ✅ |
+| **New:** Retention: anonymise rejected/expired/cancelled after 12 months, scrub legacy audit payloads/vendor actors and remove approval comments | `journey.test.js` "retention anonymises…" | ✅ locally |
 | **New:** Privacy notice in the portal | Link shown when `privacyNoticeUrl` (https only) is set; `journey.test.js` | 🟡 Notice text must come from Jones (Q16) |
 | Dev login and mocks impossible in production | `journey.test.js` "dev login refuses…", "demo generator and both HTTP endpoints refuse production" | ✅ |
 | **New:** Admin configuration survives redeploys (not HDI table data) | `journey.test.js` "starting configuration…"; `gen/db` checked: only Countries/Currencies/WHT data | ✅ locally; real HDI redeploy ⛔ |
@@ -63,9 +63,20 @@ Evidence for the Claude Code completion pass on 2026-11-10. Final code `1cceb73`
 | MTA archive | Linux CI run #6; not possible on this Windows laptop (no MBT/GNU make) | ✅ in CI |
 | ABAP parse and abapGit ZIP | `npm run lint:abap` (0 issues, 14 files); `npm run package:abap` | ✅ parse only; SAP compile and ABAP Unit ⛔ |
 
+## Current Codex security remediation (2026-11-27)
+
+The independent review found that internal request detail responses exposed callback IBAN/phone/contact data to ordinary VOB roles, bank letters and FIN-010 PDFs lacked role checks, and retention kept legacy audit prose and vendor actor IDs. The remediation now:
+
+- masks bank fields, removes callback contact/phone/notes and arbitrary comments from non-bank-authorized detail responses, and returns generic audit-event labels;
+- restricts bank-letter downloads and full FIN-010 PDFs to Bank Verifier, Finance or Admin and emits a `SensitiveDataRead` record for each allowed read;
+- uses the same redacted detail projection in the staff UI;
+- removes approval comments on retention and scrubs existing audit messages/details and vendor actor identifiers while preserving event/time and staff actor.
+
+Local verification for this patch: `npm test` **34/34 passed** (exit code 0, 80.6 seconds); `npm run lint` passed with zero warnings; `git diff --check` passed. Full Playwright and CI for this revision are pending. Live BTP Audit Log delivery remains unverified.
+
 ## Coverage (`npm run coverage`)
 
-Node's built-in coverage over `srv/**`, final code, 33 tests:
+Historical Node built-in coverage over `srv/**` on `1cceb73`, 33 tests (not rerun for the current security-remediation revision):
 
 | Lines | Branches | Functions |
 |---|---|---|

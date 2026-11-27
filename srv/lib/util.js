@@ -65,8 +65,38 @@ async function nextNumber (name, prefix) {
   return `${prefix}-${year}-${String(value).padStart(5, '0')}`
 }
 
-/** Write one append-only audit event. */
-async function audit (requestId, actor, event, message, details) {
+// Audit event text is retained and visible to several staff roles. Keep the
+// event type and actor/timestamp, but never persist user/vendor supplied prose
+// in that shared stream (comments, names, emails, phone numbers and SAP errors
+// can all contain personal or bank data).
+const AUDIT_MESSAGES = {
+  INVITED: 'Vendor invitation created', INVITE_RESENT: 'A replacement invitation was sent', EMAIL_CHANGED: 'Vendor email updated',
+  CANCELLED: 'Request cancelled', VENDOR_STARTED: 'Vendor started the form', UPLOAD_BLOCKED: 'A document upload was blocked',
+  DOCUMENT_UPLOADED: 'A document was uploaded', DOCUMENT_REMOVED: 'A document was removed', SUBMITTED: 'Vendor submitted the request',
+  ROUTE_ASSIGNED: 'Approval route assigned', CHECKS_RUN: 'Automated checks completed', REQUESTER_CHANGED: 'Request classification updated',
+  APPROVED: 'Approval step completed', SENT_BACK: 'Request sent back to the vendor', ROUTE_REASSIGNED: 'Approval route updated after reclassification',
+  REJECTED: 'Request rejected', BANK_CALLBACK: 'Bank call-back recorded', FINANCE_DATA: 'Finance data updated',
+  SAP_SIMULATED: 'SAP check completed', DUPLICATE_JUSTIFIED: 'Duplicate review completed', SAP_RETRY: 'SAP creation retry started',
+  SAP_ERROR: 'SAP creation needs administrator attention', CREATED: 'Vendor created in SAP', ATTACHED: 'SAP attachments processed',
+  ATTACH_FAILED: 'SAP attachments could not be added', DOCUMENT_VIEWED: 'A supporting document was viewed',
+  BANK_DATA_VIEWED: 'Bank details or bank evidence viewed', EXPIRED: 'Invitation expired', ESCALATED: 'Approval step escalated',
+  REMINDER: 'Approval reminder sent', ANONYMISED: 'Request data anonymised under retention policy', OTP_LOCKED: 'Vendor sign-in locked after failed codes',
+  VENDOR_SIGNED_IN: 'Vendor signed in', ADMIN_REJECTED: 'SAP error request rejected', ROUTES_CHANGED: 'Approval routes updated',
+  CONFIG_CHANGED: 'Configuration updated', PDF_DOWNLOADED: 'FIN-010 PDF downloaded',
+}
+
+function auditMessage (event, original) {
+  const message = String(original || '')
+  if (event === 'APPROVED') return message.match(/^(.+? approved)/i)?.[1] || AUDIT_MESSAGES[event]
+  if (event === 'SENT_BACK') return message.match(/^(Sent back to the vendor at [^:]+)/i)?.[1] || AUDIT_MESSAGES[event]
+  if (event === 'REJECTED') return message.match(/^(Rejected(?: at [^:]+)?)/i)?.[1] || AUDIT_MESSAGES[event]
+  if (event === 'BANK_CALLBACK') return message.match(/^(Call-back (?:confirmed|NOT confirmed))/i)?.[1] || AUDIT_MESSAGES[event]
+  if (event === 'REQUESTER_CHANGED') return AUDIT_MESSAGES[event]
+  return AUDIT_MESSAGES[event] || 'Request activity recorded'
+}
+
+/** Write one append-only audit event with a non-sensitive, event-specific label. */
+async function audit (requestId, actor, event, _message, _details) {
   await INSERT.into('jones.vob.AuditEvents').entries({
     ID: cds.utils.uuid(),
     request_ID: requestId,
@@ -75,8 +105,8 @@ async function audit (requestId, actor, event, message, details) {
     actorId: actor?.id || 'system',
     actorName: actor?.name || 'System',
     event,
-    message,
-    details: details ? JSON.stringify(details) : null,
+    message: auditMessage(event, _message),
+    details: null,
   })
   // Express routes bypass CAP's automatic service-level personal-data handlers.
   // Explicitly log sensitive bank reads, with field names only (never bank values).
@@ -86,7 +116,7 @@ async function audit (requestId, actor, event, message, details) {
       user: actor.id,
       data_subject: { type: 'jones.vob.VendorRequests', role: 'Vendor', id: { ID: requestId } },
       object: { type: 'jones.vob.VendorRequests', id: { ID: requestId } },
-      attributes: ['iban', 'bankAccountNo', 'sortCode'].map(name => ({ name })),
+      attributes: ['iban', 'bankAccountNo', 'sortCode', 'bic', 'bankName', 'bankAddress', 'accountHolder', 'bankContactName', 'bankContactPhone', 'bankLetter'].map(name => ({ name })),
     })
   }
 }
@@ -99,6 +129,6 @@ const parseJson = (v, fallback = null) => { try { return v ? JSON.parse(v) : fal
 
 module.exports = {
   AppError, fail, randomToken, sha256, randomCode, safeEqual,
-  now, iso, addMinutes, addDays, workingDaysBetween, daysBetween,
+  now, iso, addMinutes, addDays, workingDaysBetween, daysBetween, auditMessage,
   settings, nextNumber, audit, SYSTEM, isProduction, parseJson,
 }

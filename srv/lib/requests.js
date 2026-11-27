@@ -27,6 +27,19 @@ const VENDOR_FIELDS = V.FIELDS.map(f => f.key).concat(['sortCode', 'bankAccountN
 const BANK_FIELDS = ['iban', 'bic', 'bankName', 'bankAddress', 'bankAccountNo', 'sortCode', 'accountHolder']
 const CLOSED = ['CREATED', 'REJECTED', 'CANCELLED', 'EXPIRED']
 
+function redactKnownBankValues (value, r) {
+  const secrets = [...new Set([
+    r.iban, r.iban && V.formatIban(r.iban), r.bankAccountNo, r.sortCode,
+    r.sortCode && V.formatSortCode(r.sortCode), r.bic, r.bankContactPhone, r.bankContactName, r.bankName, r.bankAddress,
+  ].map(v => String(v || '').trim()).filter(v => v.length >= 5))]
+  if (typeof value === 'string') {
+    return secrets.reduce((out, secret) => out.replace(new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '[restricted]'), value)
+  }
+  if (Array.isArray(value)) return value.map(v => redactKnownBankValues(v, r))
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactKnownBankValues(v, r)]))
+  return value
+}
+
 // ------------------------------------------------------------------ config
 
 async function config () {
@@ -746,6 +759,8 @@ async function document (actor, id, docId) {
   const d = await SELECT.one.from(E.D).columns('ID', 'fileName', 'mimeType', 'scanStatus', 'content', 'docType').where({ ID: docId, request_ID: id })
   if (!d) fail(404, 'NOT_FOUND', 'That document is not available.')
   if (d.scanStatus !== 'CLEAN') fail(423, 'NOT_SCANNED', 'This file has not passed the malware scan, so it can\'t be opened.')
+  if (d.docType === 'BANK_LETTER' && !canSeeBank(actor)) fail(403, 'NOT_ALLOWED', 'Only the bank verifier, Financial Controller or admin can open bank evidence.')
+  if (d.docType === 'BANK_LETTER') await U.audit(id, actor, 'BANK_DATA_VIEWED', 'Bank evidence viewed')
   await U.audit(id, actor, 'DOCUMENT_VIEWED', `${d.docType}: ${d.fileName}`)
   return { fileName: d.fileName, mimeType: d.mimeType, content: await toBuffer(d.content) }
 }
@@ -865,9 +880,37 @@ async function detail (actor, id, { revealBank = false } = {}) {
   for (const k of VENDOR_FIELDS) data[k] = r[k] ?? null
   data.notVatRegistered = !!r.notVatRegistered
   if (!reveal) {
+    for (const k of BANK_FIELDS) data[k] = null
     data.iban = r.iban ? V.maskIban(r.iban) : null
     data.bankAccountNo = r.bankAccountNo ? V.maskTail(r.bankAccountNo) : null
+    data.sortCode = r.sortCode ? V.maskTail(r.sortCode) : null
+    data.bankContactName = null
+    data.bankContactPhone = null
   }
+  // Audit prose and approval comments are free text. Treat them as potentially
+  // sensitive unless the caller has the explicit bank-data permission.
+  const visibleEvents = reveal ? events : events.map(e => ({
+    ID: e.ID, at: e.at, actorType: e.actorType,
+    actorId: e.actorType === 'VENDOR' ? 'vendor' : e.actorId,
+    actorName: e.actorType === 'VENDOR' ? 'Vendor' : e.actorName,
+    event: e.event, message: U.auditMessage(e.event, e.message), details: null,
+  }))
+  const visibleDecisions = reveal ? decisions : decisions.map(d => ({ ...d, comment: redactKnownBankValues(d.comment, r) }))
+  const visibleBankChecks = reveal ? bankChecks : bankChecks.map(b => ({
+    ID: b.ID, round: b.round, outcome: b.outcome, numberSource: b.numberSource,
+    calledAt: b.calledAt, recordedAt: b.recordedAt, userId: b.userId, userName: b.userName,
+  }))
+  const safeDiagnostics = value => {
+    const parsed = U.parseJson(value, null)
+    if (!parsed) return null
+    return {
+      ok: typeof parsed.ok === 'boolean' ? parsed.ok : undefined,
+      at: parsed.at, kind: parsed.kind, result: parsed.result,
+      plain: redactKnownBankValues(parsed.plain, r),
+      messages: Array.isArray(parsed.messages) ? parsed.messages.map(m => ({ type: m.type, id: m.id, number: m.number, field: m.field })) : [],
+    }
+  }
+  const visibleDocuments = reveal ? documents : documents.map(d => d.docType === 'BANK_LETTER' ? { ...d, fileName: 'Bank evidence.pdf' } : d)
   // changes since the previous submission
   let changes = []
   if (versions.length > 1) {
@@ -897,26 +940,26 @@ async function detail (actor, id, { revealBank = false } = {}) {
       companyCode: r.companyCode, createdAt: r.createdAt, submittedAt: r.submittedAt, stepSince: r.stepSince,
       workingDaysInStep: r.stepSince ? U.workingDaysBetween(r.stepSince, now()) : 0, daysOpen: U.daysBetween(r.createdAt, r.closedAt || now()),
       waitingOn: waitingOn(r), currentStep: pendingStep ? { code: pendingStep.code, label: pendingStep.label } : null,
-      requesterName: r.requesterName, requesterEmail: r.requesterEmail, businessReason: r.businessReason,
+      requesterName: r.requesterName, requesterEmail: r.requesterEmail, businessReason: redactKnownBankValues(r.businessReason, r),
       accountType: r.accountType, accountTypeLabel: at?.label, subcontractor: !!at?.subcontractor,
       paymentTerms: r.paymentTerms, paymentTermsLabel: terms?.label, requiresProcurement: !!terms?.requiresProcurement, currency: r.currency,
       vendorContactName: r.vendorContactName, vendorEmail: r.vendorEmail, inviteExpiresAt: r.inviteExpiresAt,
-      returnMessage: r.returnMessage, returnSections: r.returnSections, rejectReason: r.rejectReason,
+      returnMessage: reveal ? r.returnMessage : redactKnownBankValues(r.returnMessage, r), returnSections: r.returnSections, rejectReason: reveal ? r.rejectReason : redactKnownBankValues(r.rejectReason, r),
       declarationName: r.declarationName, declarationAt: r.declarationAt,
       sapVendorNumber: r.sapVendorNumber, createdInSapAt: r.createdInSapAt, pdfAttached: !!r.pdfAttached,
-      duplicateBlocking: !!r.duplicateBlocking, duplicateJustification: r.duplicateJustification,
+      duplicateBlocking: !!r.duplicateBlocking, duplicateJustification: reveal ? r.duplicateJustification : redactKnownBankValues(r.duplicateJustification, r),
       countryName: byCode(cfg.countries, r.country)?.name,
     },
     nextAction: nextAction(r),
     route: { name: route.name, bankCheckMode: route.bankCheckMode, saved: !!r.round, summary: route.steps.map(s => s.short).join(' → ') },
     data, bankRevealed: reveal, canSeeBank: canSeeBank(actor),
     duplicates: U.parseJson(r.duplicatesJson, null),
-    simulation: U.parseJson(r.sapSimulationJson, null),
-    sap: U.parseJson(r.sapMessagesJson, null),
+    simulation: reveal ? U.parseJson(r.sapSimulationJson, null) : safeDiagnostics(r.sapSimulationJson),
+    sap: reveal ? U.parseJson(r.sapMessagesJson, null) : safeDiagnostics(r.sapMessagesJson),
     finance: financeDefaults(r, cfg),
-    steps, decisions, bankChecks, documents, missingDocuments: missing, changes,
+    steps, decisions: visibleDecisions, bankChecks: visibleBankChecks, documents: visibleDocuments, missingDocuments: missing, changes,
     bankChanged: changes.some(c => c.bank),
-    events,
+    events: visibleEvents,
     allowed: {
       approve: can.ok && !blocker, approveBlocker: can.ok ? blocker : undefined,
       sendBack: can.ok, reject: can.ok, why: can.ok ? undefined : (pendingStep ? can.reason : undefined),
@@ -931,7 +974,7 @@ async function detail (actor, id, { revealBank = false } = {}) {
       changeEmail: (owner || isAdmin(actor)) && r.status === 'INVITED',
       cancel: (owner || isAdmin(actor)) && !CLOSED.includes(r.status) && r.status !== 'CREATING',
       revealBank: canSeeBank(actor) && !!r.iban && !reveal,
-      pdf: r.round > 0,
+      pdf: r.round > 0 && canSeeBank(actor),
     },
     options: {
       accountTypes: cfg.accountTypes.map(a => ({ code: a.code, label: a.label })),
@@ -939,7 +982,7 @@ async function detail (actor, id, { revealBank = false } = {}) {
       currencies: cfg.currencies.map(c => ({ code: c.code, name: c.name })),
       whtCodes: cfg.whtCodes.filter(w => w.companyCode === r.companyCode),
       numberSources: NUMBER_SOURCES,
-      vendorPhone: r.bankContactPhone, vendorContact: r.bankContactName,
+      vendorPhone: reveal ? r.bankContactPhone : null, vendorContact: reveal ? r.bankContactName : null,
     },
   }
 }
@@ -987,7 +1030,7 @@ async function runJobs () {
 
 /** Columns that hold vendor personal, tax or bank data, or free text that may quote it. */
 const PERSONAL_COLUMNS = [...new Set([...VENDOR_FIELDS.filter(k => k !== 'country'), 'vendorContactName', 'declarationName', 'declarationIp',
-  'returnMessage', 'returnSections', 'duplicatesJson', 'checksJson', 'duplicateJustification', 'sapSimulationJson', 'sapMessagesJson'])]
+  'businessReason', 'returnMessage', 'returnSections', 'rejectReason', 'duplicatesJson', 'checksJson', 'duplicateJustification', 'sapSimulationJson', 'sapMessagesJson'])]
 
 /**
  * Retention (design §10, setting retentionMonthsClosed, default 12): requests that
@@ -1008,7 +1051,11 @@ async function anonymiseClosed (cfg) {
       notVatRegistered: false, duplicateBlocking: false, anonymisedAt: iso(now()),
     })
     await UPDATE(E.R).set(patch).where({ ID: r.ID })
-    for (const entity of [E.D, E.VER, E.B, E.T, E.O, E.P, E.N]) await DELETE.from(entity).where({ request_ID: r.ID })
+    for (const entity of [E.D, E.VER, E.B, E.S, E.T, E.O, E.P, E.N]) await DELETE.from(entity).where({ request_ID: r.ID })
+    // Keep event type, actor and timestamp for audit/statistics, but remove
+    // legacy free text that can contain vendor data, bank details or comments.
+    await UPDATE(E.A).set({ message: 'Event detail removed under retention policy', details: null }).where({ request_ID: r.ID })
+    await UPDATE(E.A).set({ actorId: 'anonymised', actorName: 'Vendor' }).where({ request_ID: r.ID, actorType: 'VENDOR' })
     await U.audit(r.ID, U.SYSTEM, 'ANONYMISED', `Personal, tax and bank data, documents and stored emails removed ${months} months after closing (retention policy)`)
   }
   return stale.length
@@ -1018,5 +1065,5 @@ module.exports = {
   E, config, load, ctxFor, createInvite, resendInvite, changeVendorEmail, cancel,
   vendorView, saveSection, uploadDocument, removeDocument, submit, missingDocuments,
   decide, recordBankVerification, setFinanceData, simulate, justifyDuplicate, retry, adminReject,
-  startCreation, createInSap, idle, fin010, document, list, dashboard, detail, runJobs, vendorActor, financeDefaults,
+  startCreation, createInSap, idle, fin010, document, list, dashboard, detail, runJobs, vendorActor, financeDefaults, canSeeBank,
 }

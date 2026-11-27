@@ -1,4 +1,6 @@
-# Paste this into Claude Code
+# Retired Claude Code takeover prompt — Jones Vendor Onboarding
+
+> **Retired 2026-11-27:** project ownership returned to Codex at the owner's request because Claude Code has no available usage. Do not execute this historical takeover. Current instructions are in [AGENTS.md](AGENTS.md).
 
 ```text
 Take over Jones Vendor Onboarding end to end. The owner explicitly transferred completion ownership to Claude Code on 2026-11-10 because Codex will be unavailable. You are the implementing developer, not a review-only agent. Review, fix, test and finish the work yourself; do not send a fix prompt back to Codex or wait for Codex to return.

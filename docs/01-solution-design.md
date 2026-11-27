@@ -5,7 +5,7 @@
 | Replaces | Paper/PDF form **FIN-010-IE01 Vendor Account Set up Form** (copy in [`reference/`](../reference/FIN-010-IE01-Vendor-Account-Setup-Form.pdf)) |
 | Company | H. A. O'Neil Limited (Jones Engineering), company code **IE01** |
 | SAP | ECC 6.0 EHP8 (SAP_BASIS 750) on HANA, DEV / QAS / PRD / TST, client 300 |
-| Status | Design agreed for build. **Platform decided: Option 6, CAP on SAP BTP** ([ADR-001](decisions/ADR-001-platform-cap-on-btp.md)). Codex builds v1 in one pass; Claude reviews and tests afterwards |
+| Status | Design agreed for build. **Platform decided: Option 6, CAP on SAP BTP** ([ADR-001](decisions/ADR-001-platform-cap-on-btp.md)). Current owner workflow is in [AGENTS.md](../AGENTS.md) |
 | Date | 2026-11-09 |
 
 ---
@@ -362,9 +362,9 @@ The CAP SAP adapter calls a JSON REST API. In production it is served by the ABA
 - **Bank data**: after submission the vendor sees it masked; to change it they re-enter it. Internal lists show only the last 4 digits. Full values are visible only to the bank verifier, FC and admin, and each view is audit-logged.
 - **Authorisation and SoD**: enforced on the server, never only in the UI. Every action checks the role, the status, and the person's earlier steps on that request.
 - **Uploads**: type allow-list (PDF/JPG/PNG), size limit, malware scan before any internal user can open a file. Infected files are rejected with a friendly message.
-- **Audit**: an append-only event table (no update/delete API) plus the SAP Audit Log service for personal data.
+- **Audit**: an event table (no general update/delete API) plus the SAP Audit Log service for sensitive bank reads. Event prose is minimized to event labels. As a retention exception, old event details and vendor actor identifiers are scrubbed after the retention period while event type, timestamp and staff actor remain.
 - **Headers and privacy**: CSP, HSTS, no-sniff and frame-deny headers. A privacy notice link in the portal footer once Jones supplies the notice URL (Q16).
-- **Retention (⚙)**: anonymise rejected/expired/cancelled requests after 12 months (implemented in the scheduled reminder/expiry job, `cds.requires.vob.jobMinutes`: personal, tax and bank fields, documents, versions, call-back evidence, links, codes and stored emails are removed; status, dates and the audit trail remain); keep created ones 7 years.
+- **Retention (⚙)**: anonymise rejected/expired/cancelled requests after 12 months (implemented in the scheduled reminder/expiry job, `cds.requires.vob.jobMinutes`: personal, tax and bank fields, documents, versions, approval comments, call-back evidence, links, codes and stored emails are removed; old audit message/details and vendor actor identifiers are scrubbed while event type/time and staff actor remain); keep created ones 7 years.
 - **No secrets in the repo.** Destinations and credentials live in BTP service bindings only.
 - **Dev-only login switcher** for local testing, impossible to enable in the production profile.
 

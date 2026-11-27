@@ -1,4 +1,8 @@
-# Claude Code takeover — 2026-11-10
+# Historical Claude Code takeover — superseded 2026-11-27
+
+> This document records the 2026-11-10 handover and implementation state. The owner took the work back on 2026-11-27 because Claude Code has no available usage and authorized Codex to act as developer, reviewer and merger. Current instructions: [AGENTS.md](../AGENTS.md). Its historical instruction to leave PR #2 unmerged is superseded; merge only after independent review and all required checks pass on the exact PR head. Real SAP/BTP access and production deployment remain unauthorized.
+
+> **Current security blocker:** the independent review found unauthorized bank-data paths in request details, bank-letter downloads and FIN-010 PDFs, plus legacy audit PII surviving retention. A remediation is in progress on the current `build/v1`; local verification to date is 34/34 Node tests, lint and diff check. See [test-evidence.md](test-evidence.md) for the patch scope. Do not merge until independent review and fresh CI pass on its exact head.
 
 > **Status after the Claude Code completion pass (2026-11-10, later the same day).** Items 2–4 and 6–7 below are done for everything possible without Jones's SAP/BTP. See [test-evidence.md](test-evidence.md) for the requirement-to-test mapping and coverage, [btp-setup-guide.md](btp-setup-guide.md) for the click-by-click deployment path, and [deviations.md](deviations.md) D10.
 >
