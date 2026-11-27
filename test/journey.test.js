@@ -198,6 +198,13 @@ describe('vendor onboarding journey', () => {
       }, as('ben'))
       assert.deepEqual(Object.keys(callback.data).sort(), ['outcome', 'recordedAt', 'round'])
       assert.ok(!JSON.stringify(callback.data).includes('12345678'))
+
+      await UPDATE('jones.vob.VendorRequests').set({ bankAccountNo: '1234', sortCode: '021', businessReason: 'Test with short account 1234 and routing code 021.' }).where({ ID: request.ID })
+      const shortValues = (await GET(`/api/internal/requests/${request.ID}`, as('rachel'))).data
+      assert.equal(shortValues.data.bankAccountNo, '••••234')
+      assert.equal(shortValues.data.sortCode, '••••21')
+      assert.ok(!shortValues.request.businessReason.includes('1234'))
+      assert.ok(!shortValues.request.businessReason.includes('021'))
     } finally { auditLog.log = original }
   })
 

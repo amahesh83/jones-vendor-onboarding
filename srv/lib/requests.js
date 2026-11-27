@@ -27,22 +27,34 @@ const VENDOR_FIELDS = V.FIELDS.map(f => f.key).concat(['sortCode', 'bankAccountN
 const BANK_FIELDS = ['iban', 'bic', 'bankName', 'bankAddress', 'bankAccountNo', 'sortCode', 'accountHolder']
 const CLOSED = ['CREATED', 'REJECTED', 'CANCELLED', 'EXPIRED']
 
+function maskBankNumber (value) {
+  const s = String(value || '').replace(/\s/g, '')
+  if (!s) return null
+  const visible = Math.min(4, Math.max(0, s.length - 1))
+  return `••••${visible ? s.slice(-visible) : ''}`
+}
+
 function redactKnownBankValues (value, r) {
+  const shortBankValues = new Set([r.bankAccountNo, r.sortCode, r.sortCode && V.formatSortCode(r.sortCode)].map(v => String(v || '').trim()).filter(Boolean))
   const secrets = [...new Set([
     r.iban, r.iban && V.formatIban(r.iban), r.bankAccountNo, r.sortCode,
     r.sortCode && V.formatSortCode(r.sortCode), r.bic, r.bankContactPhone, r.bankContactName, r.bankName, r.bankAddress,
-  ].map(v => String(v || '').trim()).filter(v => v.length >= 5))]
+  ].map(v => String(v || '').trim()).filter(v => v.length >= 5 || shortBankValues.has(v)))]
   if (typeof value === 'string') {
     let out = value
     for (const secret of secrets) {
-      out = out.replace(new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '[restricted]')
+      const exact = secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      out = out.replace(new RegExp(`(?<![A-Z0-9])${exact}(?![A-Z0-9])`, 'gi'), '[restricted]')
       const compact = secret.replace(/[^A-Z0-9]/gi, '')
-      if (compact.length >= 6 && /^[A-Z0-9]+$/i.test(compact)) {
+      if ((compact.length >= 6 || shortBankValues.has(secret)) && /^[A-Z0-9]+$/i.test(compact)) {
         const separated = compact.split('').map(ch => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\s.()-]*')
-        out = out.replace(new RegExp(separated, 'gi'), '[restricted]')
+        out = out.replace(new RegExp(`(?<![A-Z0-9])${separated}(?![A-Z0-9])`, 'gi'), '[restricted]')
       }
       const digits = secret.replace(/\D/g, '')
-      if (digits.length >= 8) out = out.replace(new RegExp(digits.split('').join('[\\s.()-]*'), 'g'), '[restricted]')
+      if (digits.length >= 8 || shortBankValues.has(secret)) {
+        const separatedDigits = digits.split('').join('[\\s.()-]*')
+        out = out.replace(new RegExp(`(?<!\\d)${separatedDigits}(?!\\d)`, 'g'), '[restricted]')
+      }
     }
     return out
   }
@@ -893,8 +905,8 @@ async function detail (actor, id, { revealBank = false } = {}) {
   if (!reveal) {
     for (const k of BANK_FIELDS) data[k] = null
     data.iban = r.iban ? V.maskIban(r.iban) : null
-    data.bankAccountNo = r.bankAccountNo ? V.maskTail(r.bankAccountNo) : null
-    data.sortCode = r.sortCode ? V.maskTail(r.sortCode) : null
+    data.bankAccountNo = maskBankNumber(r.bankAccountNo)
+    data.sortCode = maskBankNumber(r.sortCode)
     data.bankContactName = null
     data.bankContactPhone = null
   }
