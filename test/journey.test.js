@@ -460,6 +460,64 @@ describe('vendor onboarding journey', () => {
     }
   })
 
+  test('created-number email retry never repeats SAP creation', async () => {
+    const request = await submittedExample('created-email-retry')
+    await POST(`/api/internal/requests/${request.ID}/approve`, {}, as('rachel'))
+    let d = (await GET(`/api/internal/requests/${request.ID}?reveal=bank`, as('ben'))).data
+    await POST(`/api/internal/requests/${request.ID}/bank-verification`, {
+      numberCalled: d.data.bankContactPhone, numberSource: 'INDEPENDENT_BANK', personSpokenTo: d.data.bankContactName, outcome: 'CONFIRMED',
+    }, as('ben'))
+    await POST(`/api/internal/requests/${request.ID}/approve`, {}, as('ben'))
+    await POST(`/api/internal/requests/${request.ID}/simulate`, {}, as('fiona'))
+
+    const cds = require('@sap/cds'), mock = require('../srv/lib/sap/mock'), queue = require('../srv/lib/sap/creation-queue'), R = require('../srv/lib/requests')
+    const emails = await SELECT.one.from('jones.vob.VendorRequests').columns('requesterEmail', 'vendorEmail').where({ ID: request.ID })
+    const previousKind = cds.env.requires.vob.mail, previousDelays = cds.env.requires.vob.retryDelays, originalConnect = cds.connect.to, originalCreate = mock.createVendor
+    let createCalls = 0, delivered = []
+    cds.env.requires.vob.mail = 'graph'
+    cds.env.requires.vob.retryDelays = [0]
+    mock.createVendor = async payload => { if (!payload.testRun) createCalls++; return originalCreate(payload) }
+    let failVendorNotice = true
+    cds.connect.to = async name => name === 'vob-graph' ? { send: async ({ data }) => {
+      const address = data.message.toRecipients[0].emailAddress.address
+      if (address === emails.vendorEmail && failVendorNotice) throw new Error('Synthetic Graph outage')
+      delivered.push(address)
+    } } : originalConnect.call(cds.connect, name)
+    try {
+      await POST(`/api/internal/requests/${request.ID}/approve`, {}, as('fiona'))
+      await queue.flush()
+      let vendor = await SELECT.one.from('jones.vob.VendorRequests').where({ ID: request.ID })
+      let job = await SELECT.one.from('jones.vob.SapCreationJobs').where({ requestId: request.ID })
+      let failures = await GET('/api/internal/admin/failed-notifications', as('adam'))
+      assert.equal(vendor.status, 'CREATED')
+      assert.equal(job.state, 'FAILED')
+      assert.equal(createCalls, 1)
+      assert.equal(failures.data.filter(n => n.request_ID === request.ID).length, 1)
+      assert.equal(failures.data.find(n => n.request_ID === request.ID).template, 'createdVendor')
+      assert.ok((await SELECT.from('jones.vob.Notifications').where({ request_ID: request.ID, template: 'createdRequester', status: 'SENT' })).length === 1)
+
+      failVendorNotice = false
+      const one = failures.data.find(n => n.request_ID === request.ID)
+      await POST(`/api/internal/admin/notifications/${one.ID}/retry`, {}, as('adam'))
+      await R.idle()
+      vendor = await SELECT.one.from('jones.vob.VendorRequests').where({ ID: request.ID })
+      job = await SELECT.one.from('jones.vob.SapCreationJobs').where({ requestId: request.ID })
+      failures = await GET('/api/internal/admin/failed-notifications', as('adam'))
+      assert.equal(vendor.status, 'CREATED')
+      assert.equal(job.state, 'DONE')
+      assert.equal(createCalls, 1)
+      assert.equal(delivered.filter(email => email === emails.requesterEmail).length, 1)
+      assert.equal(delivered.filter(email => email === emails.vendorEmail).length, 1)
+      assert.equal(failures.data.filter(n => n.request_ID === request.ID).length, 0)
+    } finally {
+      cds.connect.to = originalConnect
+      mock.createVendor = originalCreate
+      cds.env.requires.vob.mail = previousKind
+      cds.env.requires.vob.retryDelays = previousDelays
+      await queue.flush()
+    }
+  })
+
   test('retention anonymises closed requests after the configured months; recent ones are kept', async () => {
     const R = require('../srv/lib/requests')
     const old = await submittedExample('retention-old')

@@ -747,12 +747,30 @@ async function createInSap (id, { attempt = 1 } = {}) {
     LOG.error('Attaching documents failed', e)
     await tx(() => U.audit(id, U.SYSTEM, 'ATTACH_FAILED', `The vendor was created, but attaching the documents in SAP failed: ${e.message}`))
   }
-  await tx(async () => {
-    const fresh = await SELECT.one.from(E.R).where({ ID: id })
-    const link = internalLink(cfg, id)
-    await mail.send({ to: fresh.requesterEmail, template: 'createdRequester', requestId: id, actionUrl: link, data: { companyName: fresh.companyName, vendorNumber: fresh.sapVendorNumber, companyCode: fresh.companyCode, link } })
-    await mail.send({ to: fresh.vendorEmail, template: 'createdVendor', requestId: id, data: { contactName: fresh.vendorContactName, companyName: fresh.companyName, vendorNumber: fresh.sapVendorNumber } })
-  })
+}
+
+/** Retry created-number emails from the durable SAP job without calling SAP again. */
+async function sendCreatedNotifications (id) {
+  const r = await load(id)
+  if (r.status !== 'CREATED' || !r.sapVendorNumber) fail(409, 'NOT_CREATED', 'Created-number emails can be sent after SAP creation completes.')
+  const cfg = await config(), link = internalLink(cfg, id)
+  const sentRows = await SELECT.from(E.N).columns('template').where({ request_ID: id, status: 'SENT' })
+  const sent = new Set(sentRows.map(n => n.template))
+  const notices = [
+    { template: 'createdRequester', to: r.requesterEmail, actionUrl: link, data: { companyName: r.companyName, vendorNumber: r.sapVendorNumber, companyCode: r.companyCode, link } },
+    { template: 'createdVendor', to: r.vendorEmail, data: { contactName: r.vendorContactName, companyName: r.companyName, vendorNumber: r.sapVendorNumber } },
+  ]
+  const failed = []
+  for (const notice of notices) {
+    if (!notice.to || sent.has(notice.template)) continue
+    // Commit each notification result independently of SAP's already-committed
+    // CREATED state so a failed delivery survives queue retry/worker restart.
+    const outcome = await cds.tx(() => mail.send({ ...notice, requestId: id, throwOnFailure: false }))
+    if (!outcome.sent) failed.push(notice.template)
+    else await cds.tx(() => UPDATE(E.N).set({ status: 'RETRIED' }).where({ request_ID: id, template: notice.template, status: 'FAILED' }))
+  }
+  if (failed.length) throw new Error(`Created-number email delivery failed for ${failed.join(', ')}`)
+  return { sent: true }
 }
 
 async function toBuffer (v) {
@@ -1089,5 +1107,5 @@ module.exports = {
   E, config, load, ctxFor, createInvite, resendInvite, changeVendorEmail, cancel,
   vendorView, saveSection, uploadDocument, removeDocument, submit, missingDocuments,
   decide, recordBankVerification, setFinanceData, simulate, justifyDuplicate, retry, adminReject,
-  startCreation, createInSap, idle, fin010, document, list, dashboard, detail, runJobs, vendorActor, financeDefaults, canSeeBank,
+  startCreation, createInSap, sendCreatedNotifications, idle, fin010, document, list, dashboard, detail, runJobs, vendorActor, financeDefaults, canSeeBank,
 }

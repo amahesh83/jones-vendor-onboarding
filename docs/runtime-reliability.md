@@ -8,6 +8,8 @@ The worker claims due work with a conditional update and a five-minute lease. SA
 
 The server drains due work on startup and once per second. Expired leases allow recovery after a process dies. SAP uses the same request number on every attempt and must enforce idempotency in ECC. This is at-least-once delivery, not an exactly-once network guarantee. A durable database is essential: the demo's in-memory database intentionally resets on restart. The process-restart test uses a file-backed SQLite database.
 
+The same job retries created-number notices after SAP reaches `CREATED`; it checks that each template is not already `SENT` before delivery, so a mail retry never calls SAP again. Failed notices are retained in `Notifications`; after automatic retries exhaust, Admin → Email failures can requeue the job. Only the administrator retry path can restart that terminal job. Other Graph mail failures fail the initiating action with HTTP 424, which tells the user that the action did not complete.
+
 This is a small application outbox rather than CAP's generic queued-service dispatcher. It keeps the existing creation logic and avoids holding a SQLite transaction during SAP and PDF processing. CAP's native persistent outbox remains available for the audit plugin.
 
 The mock SAP adapter is process-local. The restart test exercises recovery of unprocessed work and repeated worker starts; only SAP DEV can prove ECC idempotency across a crash after a successful remote commit.

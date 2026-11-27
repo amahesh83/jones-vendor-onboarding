@@ -29,7 +29,7 @@ test('all screens: responsive layout, keyboard and axe', async ({ page, context 
   await H.detail(page, r.ID, 'fiona'); await scan('created-request')
   await page.goto('/portal/'); await scan('vendor-created')
   await H.login(page, 'adam')
-  for (const [hash, label] of [['/requests?view=all', 'requests'], ['/admin/sap-errors', 'sap-errors'], ['/admin/connection', 'connection'], ['/admin/config', 'configuration'], ['/admin/routes', 'approval-routes'], ['/mailbox', 'mailbox']]) {
+  for (const [hash, label] of [['/requests?view=all', 'requests'], ['/admin/sap-errors', 'sap-errors'], ['/admin/email-failures', 'email-failures'], ['/admin/connection', 'connection'], ['/admin/config', 'configuration'], ['/admin/routes', 'approval-routes'], ['/mailbox', 'mailbox']]) {
     await page.goto('/internal/#' + hash); await page.reload(); await page.locator('#app .card, #app .list-card').first().waitFor(); await scan(label)
   }
   await page.goto('/internal/#/admin/config')

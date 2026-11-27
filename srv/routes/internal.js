@@ -196,6 +196,30 @@ router.post('/admin/sap-ping', handle(async req => {
   }
 }))
 
+router.get('/admin/failed-notifications', handle(async req => {
+  adminOnly(req)
+  const rows = await SELECT.from('jones.vob.Notifications').columns('ID', 'request_ID', 'toAddress', 'subject', 'template', 'createdAt')
+    .where({ status: 'FAILED', template: { in: ['createdRequester', 'createdVendor'] } }).orderBy('createdAt desc')
+  return Promise.all(rows.map(async n => {
+    const r = await SELECT.one.from('jones.vob.VendorRequests').columns('requestNumber', 'companyName', 'sapVendorNumber').where({ ID: n.request_ID })
+    const job = await SELECT.one.from('jones.vob.SapCreationJobs').columns('state').where({ requestId: n.request_ID })
+    return { ...n, requestNumber: r?.requestNumber, companyName: r?.companyName, sapVendorNumber: r?.sapVendorNumber, jobState: job?.state }
+  }))
+}))
+
+router.post('/admin/notifications/:id/retry', handle(async req => {
+  const actor = adminOnly(req)
+  const notice = await SELECT.one.from('jones.vob.Notifications').where({ ID: req.params.id })
+  if (!notice || notice.status !== 'FAILED' || !['createdRequester', 'createdVendor'].includes(notice.template)) fail(404, 'NOT_FOUND', 'That failed created-number email is no longer available for retry.')
+  const r = await R.load(notice.request_ID)
+  if (r.status !== 'CREATED') fail(409, 'NOT_CREATED', 'The vendor must be created in SAP before retrying this email.')
+  const job = await SELECT.one.from('jones.vob.SapCreationJobs').where({ requestId: r.ID })
+  if (job?.state !== 'FAILED') fail(409, 'RETRY_PENDING', 'Automatic email retry is still running or has already completed.')
+  await require('../lib/sap/creation-queue').enqueue(r.ID)
+  await require('../lib/util').audit(r.ID, actor, 'CREATED_EMAIL_RETRY', 'Admin queued automatic retry of failed created-number emails')
+  return after({ queued: true }, r.ID)
+}))
+
 const EDITABLE = {
   Settings: { key: ['name'], fields: ['value'] },
   PaymentTerms: { key: ['code'], fields: ['label', 'sapKey', 'requiresProcurement', 'isDefault'] },

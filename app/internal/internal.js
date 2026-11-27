@@ -411,7 +411,7 @@
   // ---------------------------------------------------------------- admin
   async function admin (tab) {
     if (!has('VOB_MasterDataAdmin')) { app.innerHTML = html`<div class="wrap" style="padding-top:30px"><div class="banner info"><span class="i">🔒</span><div>Only master data admins can open this page.</div></div></div>`; return }
-    const tabs = [['sap-errors', '🚨 SAP errors'], ['routes', '🔀 Approval routes'], ['config', '⚙️ Configuration'], ['connection', '🔌 SAP connection']]
+    const tabs = [['sap-errors', '🚨 SAP errors'], ['email-failures', '✉️ Email failures'], ['routes', '🔀 Approval routes'], ['config', '⚙️ Configuration'], ['connection', '🔌 SAP connection']]
     app.innerHTML = html`<div class="wrap" style="padding-top:26px"><h1>Admin</h1><div class="seg" style="margin-bottom:16px">${tabs.map(([k, l]) => html`<button class="${k === tab ? 'on' : ''}" data-tab="${k}" type="button">${l}</button>`)}</div><div id="adm"></div></div>`
     $$('[data-tab]').forEach(b => { b.onclick = () => { location.hash = '#/admin/' + b.dataset.tab } })
     const box = $('#adm')
@@ -419,6 +419,10 @@
     if (tab === 'sap-errors') {
       const rows = await api('/api/internal/requests?view=sap-errors')
       box.innerHTML = rows.length ? html`<div class="stack">${rows.map(r => rowCard(r))}</div><p class="small muted" style="margin-top:12px">Open a request to see SAP's message in plain English, correct the finance data, and retry. Retries never create a second vendor.</p>` : html`<div class="card empty"><div class="art">🌈</div>No SAP errors. Everything is flowing.</div>`
+    } else if (tab === 'email-failures') {
+      const rows = await api('/api/internal/admin/failed-notifications')
+      box.innerHTML = rows.length ? html`<div class="stack">${rows.map(n => html`<article class="card"><div class="row" style="justify-content:space-between;gap:12px"><div><h3 style="margin:0">${n.subject}</h3><p class="small muted">${n.requestNumber} · ${n.companyName} · SAP vendor ${n.sapVendorNumber}</p><p class="small">To: ${n.toAddress}</p><p class="small muted">Template: <span class="mono">${n.template}</span> · failed ${ago(n.createdAt)}${n.jobState !== 'FAILED' ? ' · automatic retry is still running' : ''}</p></div><button class="btn btn-sm btn-primary" data-email-retry="${n.ID}" ${n.jobState !== 'FAILED' ? 'disabled' : ''}>${n.jobState === 'FAILED' ? 'Retry email' : 'Retrying…'}</button></div></article>`)}</div><p class="small muted" style="margin-top:12px">SAP creation is complete. Retrying these notices never calls SAP again.</p>` : html`<div class="card empty"><div class="art">📨</div>No failed created-number emails.</div>`
+      $$('[data-email-retry]').forEach(b => { b.onclick = async () => { b.disabled = true; try { await api(`/api/internal/admin/notifications/${b.dataset.emailRetry}/retry`, { method: 'POST', body: {} }); toast('Email retry queued', 'ok'); setTimeout(() => { if (location.hash.includes('email-failures')) admin('email-failures') }, 1800) } catch (e) { b.disabled = false; errMsg(e) } } })
     } else if (tab === 'connection') {
       box.innerHTML = html`<div class="card"><h2>🔌 Test the SAP connection</h2><p class="muted">Calls <span class="mono">GET /ping</span> on the ZVOB API through the BTP destination.</p><button class="btn btn-primary" id="ping">Test connection</button><div id="pingOut" style="margin-top:14px"></div></div>`
       $('#ping').onclick = async () => {
