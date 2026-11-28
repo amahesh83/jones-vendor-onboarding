@@ -1,6 +1,6 @@
 # Acceptance mapping and evidence
 
-Evidence for the Claude Code completion pass on 2026-11-10. Final code `1cceb73` passed CI [run 42857157309](https://github.com/amahesh83/jones-vendor-onboarding/actions/runs/42857157309): 33/33 Node tests, 19/19 Playwright tests, lint, ABAP parser, CAP build, MTA archive and abapGit packaging. The earlier checkpoint `a456354` passed [run #6](https://github.com/amahesh83/jones-vendor-onboarding/actions/runs/42808148930). Run details and their limits are in [test-evidence/README.md](test-evidence/README.md).
+Evidence for the Codex continuation checkpoint on 2026-11-28. Code commit `61f27e26bb71a9954713bd63180e4909b3193b11` passed local `npm test` (40/40), lint, ABAP parsing, CAP production build and `git diff --check`. Exact-head CI [run #28](https://github.com/amahesh83/jones-vendor-onboarding/actions/runs/46085330923) passed the complete workflow, including Playwright acceptance/screen checks, CAP/MTA builds, ABAP package generation and artifact upload. Independent Sol review of this exact commit found no remaining blocker in the notification retry races. These results cover automated tests, mock SAP and build/package validation; they do not verify live ECC, BTP, App Router, Graph, malware scanner, Audit Log delivery, HDI redeployment or ABAP Unit. Run details and evidence limits are in [test-evidence/README.md](test-evidence/README.md).
 
 **Key:** ✅ tested and passing · 🟡 partly tested (the gap is stated) · ⛔ not testable here (needs Jones SAP/BTP or Jones input)
 
@@ -63,7 +63,7 @@ Evidence for the Claude Code completion pass on 2026-11-10. Final code `1cceb73`
 | MTA archive | Linux CI run #6; not possible on this Windows laptop (no MBT/GNU make) | ✅ in CI |
 | ABAP parse and abapGit ZIP | `npm run lint:abap` (0 issues, 14 files); `npm run package:abap` | ✅ parse only; SAP compile and ABAP Unit ⛔ |
 
-## Current Codex security remediation (2026-11-27)
+## Codex security and reliability remediation (verified through 2026-11-28)
 
 The independent review found that internal request detail responses exposed callback IBAN/phone/contact data to ordinary VOB roles, bank letters and FIN-010 PDFs lacked role checks, and retention kept legacy audit prose and vendor actor IDs. The remediation now:
 
@@ -72,7 +72,7 @@ The independent review found that internal request detail responses exposed call
 - uses the same redacted detail projection in the staff UI;
 - removes approval comments on retention and scrubs existing audit messages/details and vendor actor identifiers while preserving event/time and staff actor.
 
-Latest local verification after follow-up fixes: `npm test` **35/35 passed** (exit code 0, 15.8 seconds); `npm run lint` passed with zero warnings; `git diff --check` passed. Targeted Playwright journey 06 passed after the test explicitly reveals bank data before entering callback evidence. A full-suite run on the prior security commit passed 18/19 (all four viewport/theme traversals passed); the one failure was this missing reveal/person-spoken-to action, now corrected and rechecked in isolation. Full Playwright and CI for the current revision are pending. Live BTP Audit Log delivery remains unverified.
+Additional verified fixes include short non-IBAN account/routing masks, a production RoleDirectory admin path with empty-pool warnings, and durable retry of created-number emails without replaying SAP creation. Retry recovery reconciles stale FAILED records after a prior SENT record, and admin requeue uses a conditional FAILED→READY transition to prevent overlapping retries. Graph request timeout is 30 seconds against a five-minute worker lease; delivery remains at-least-once across a crash after remote acceptance. Latest local verification: `npm test` **40/40 passed**; lint, ABAP parser, CAP build and diff checks passed. Exact-head CI [run #28](https://github.com/amahesh83/jones-vendor-onboarding/actions/runs/46085330923) passed the full Playwright and packaging workflow. Live BTP Audit Log delivery remains unverified.
 
 ## Coverage (`npm run coverage`)
 

@@ -2,7 +2,7 @@
 
 > This document records the 2026-11-10 handover and implementation state. The owner took the work back on 2026-11-27 because Claude Code has no available usage and authorized Codex to act as developer, reviewer and merger. Current instructions: [AGENTS.md](../AGENTS.md). Its historical instruction to leave PR #2 unmerged is superseded; merge only after independent review and all required checks pass on the exact PR head. Real SAP/BTP access and production deployment remain unauthorized.
 
-> **Current security remediation:** unauthorized bank-data paths in request details, bank-letter downloads and FIN-010 PDFs are guarded; audit payloads and retention are minimized. Follow-up covers US-style non-IBAN accounts and separator variants. Latest local verification: 35/35 Node tests, lint, and targeted Playwright journey 06 pass. Full Playwright and fresh CI for the current revision are pending; do not merge until independent review and exact-head checks pass.
+> **Current checkpoint (2026-11-28):** The owner took the work back from Claude and authorized Codex to continue development, review and merge once gates pass. Latest code commit: `61f27e26bb71a9954713bd63180e4909b3193b11` on `build/v1`. Local `npm test` passed 40/40; lint, ABAP parser, CAP build and diff checks passed. Exact-head CI [run #28](https://github.com/amahesh83/jones-vendor-onboarding/actions/runs/46085330923) passed tests, Playwright, lint, parser, CAP/MTA builds and abapGit packaging. Independent Sol review cleared the latest notification retry/concurrency fixes. PR #2 remains for the coordinator to mark ready and merge. This verifies local mocks/build artifacts only: live SAP ECC, BTP services, identity, Graph delivery, scanner, audit-log delivery and ABAP Unit remain external gates.
 
 > **Status after the Claude Code completion pass (2026-11-10, later the same day).** Items 2–4 and 6–7 below are done for everything possible without Jones's SAP/BTP. See [test-evidence.md](test-evidence.md) for the requirement-to-test mapping and coverage, [btp-setup-guide.md](btp-setup-guide.md) for the click-by-click deployment path, and [deviations.md](deviations.md) D10.
 >
@@ -16,16 +16,16 @@
 > - Retention anonymisation and the privacy-notice link are implemented.
 > - A coverage script is added.
 >
-> Item 5 (ABAP in ECC DEV) and all live integrations remain external. The original handover text follows unchanged.
+> Item 5 (ABAP in ECC DEV) and all live integrations remain external. Remaining sections below are retained as historical context; use the current instructions and checkpoint above.
 
-## Ownership and exact checkpoint
+## Historical Claude ownership and implementation checkpoint (superseded)
 
-The owner asked Claude Code to take over all remaining implementation, review, testing and completion work end to end. Codex is handing off now, not scheduling work for its return. The old “Claude reviews only, then gives Codex a fix prompt” arrangement is superseded. `AGENTS.md`, `CLAUDE.md` and the root takeover prompt reflect that change.
+The following ownership and verification notes describe the old Claude handover and are retained as historical context only. Current ownership, branch status and verification are in the checkpoint at the top and `AGENTS.md`.
 
 - Local folder: `C:\Users\maynor\Documents\Codex\projects\Jones Vendor Onboarding`
 - Repository: https://github.com/amahesh83/jones-vendor-onboarding (private)
 - Branch: `build/v1`; continue it, do not reset or rebuild.
-- Existing draft PR: https://github.com/amahesh83/jones-vendor-onboarding/pull/2 (base `main`; leave unmerged under the current build brief).
+- Existing PR: https://github.com/amahesh83/jones-vendor-onboarding/pull/2 (base `main`; current owner authorized merge after independent review and exact-head CI pass).
 - Last implementation commit: `a456354980c5fab4fbed50a5c278c4ae6ad549d1` — saved vendor process guidance and review targets.
 - Previous main implementation commit: `eb972622e40ef816b42e160c59fa9ba92ba78d7f` — configurable routes, UI/demo/process improvements and reliability/ABAP work.
 - Earlier working app: `aa24062`; visual refresh: `0153d2f`. Preserve this work.

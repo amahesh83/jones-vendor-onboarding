@@ -1,6 +1,19 @@
 # Validation evidence
 
-## Claude Code completion pass (2026-11-10)
+## Current Codex checkpoint (2026-11-28)
+
+Latest code commit `61f27e26bb71a9954713bd63180e4909b3193b11` on `build/v1`:
+
+| Check | Result |
+|---|---|
+| Local `npm test` | **40 passed, 0 failed** |
+| Local lint, ABAP parser, CAP production build, `git diff --check` | Passed |
+| Exact-head GitHub CI [run #28](https://github.com/amahesh83/jones-vendor-onboarding/actions/runs/46085330923) | **Success:** Node tests, full Playwright acceptance and responsive/theme checks, lint, ABAP parser, CAP build, Linux MTA archive, abapGit package and artifact upload |
+| Independent Sol review | Cleared the created-notice retry recovery and concurrent retry blockers at this exact commit; no additional blocker reported |
+
+The checks use mock SAP and local/build environments. They do not verify live ECC, ABAP Unit, BTP deployment/services, XSUAA/IAS, App Router CSRF, Graph delivery, malware scanning, Audit Log delivery or HDI redeployment. These remain external go-live gates. The historical evidence below documents earlier checkpoints and is retained for traceability.
+
+## Historical Claude Code completion pass (2026-11-10)
 
 Local runs were on Windows 11 with Node 24.22.2; the last row is the authoritative CI run:
 
