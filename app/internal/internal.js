@@ -16,6 +16,31 @@
   const errMsg = e => { toast(e.message, 'bad') }
 
   $('#themeBtn').onclick = UI.toggleTheme
+  const staffSidebar = $('#staffSidebar')
+  const staffMenuToggle = $('#staffMenuToggle')
+  const staffNavScrim = $('#staffNavScrim')
+  const staffNavMobile = window.matchMedia('(max-width: 720px)')
+  function setStaffNav (open) {
+    if (!staffSidebar || !staffMenuToggle || !staffNavScrim) return
+    const mobile = staffNavMobile.matches
+    const visibleOpen = mobile && open
+    const focusWasInSidebar = staffSidebar.contains(document.activeElement)
+    staffSidebar.classList.toggle('open', visibleOpen)
+    staffSidebar.inert = mobile && !visibleOpen
+    staffSidebar.setAttribute('aria-hidden', mobile && !visibleOpen ? 'true' : 'false')
+    staffMenuToggle.setAttribute('aria-expanded', visibleOpen ? 'true' : 'false')
+    staffMenuToggle.setAttribute('aria-label', visibleOpen ? 'Close navigation' : 'Open navigation')
+    staffNavScrim.hidden = !visibleOpen
+    if (visibleOpen) staffSidebar.querySelector('a:not([hidden])')?.focus()
+    else if (mobile && focusWasInSidebar) staffMenuToggle.focus()
+    else if (!mobile && document.activeElement === staffMenuToggle) staffSidebar.querySelector('a:not([hidden])')?.focus()
+  }
+  setStaffNav(false)
+  if (staffMenuToggle) staffMenuToggle.onclick = () => setStaffNav(!staffSidebar.classList.contains('open'))
+  if (staffNavScrim) staffNavScrim.onclick = () => setStaffNav(false)
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && staffSidebar?.classList.contains('open')) setStaffNav(false) })
+  staffNavMobile.addEventListener('change', () => setStaffNav(false))
+  $('#navInvite').onclick = e => { e.preventDefault(); setStaffNav(false); inviteDialog() }
 
   // ---------------------------------------------------------------- boot & personas
   async function boot () {
@@ -29,6 +54,7 @@
     renderWho()
     $('#inviteBtn').hidden = !has('VOB_Requester')
     $('#inviteBtn').onclick = inviteDialog
+    $('#navInvite').hidden = !has('VOB_Requester')
     $('#navAdmin').hidden = !has('VOB_MasterDataAdmin')
     $('#navMail').hidden = !DEV
     window.addEventListener('hashchange', router)
@@ -62,6 +88,7 @@
     const q = new URLSearchParams(qs || '')
     const parts = path.split('/').filter(Boolean)
     $$('#nav a').forEach(a => a.classList.toggle('active', a.dataset.nav === (parts[0] || 'home')))
+    setStaffNav(false)
     window.scrollTo(0, 0)
     if (!parts.length) return home()
     if (parts[0] === 'requests' && parts[1]) return detail(parts[1])
@@ -165,8 +192,8 @@
     const lastBank = d.bankChecks.find(b => b.round === r.round)
 
     app.innerHTML = html`
-      <section class="hero" style="padding-bottom:70px"><div class="wrap">
-        <a href="#/requests" style="color:rgba(255,255,255,.85);text-decoration:none" class="small">← All requests</a>
+      <section class="hero request-hero"><div class="wrap">
+        <a href="#/requests" style="text-decoration:none" class="small">← All requests</a>
         <div class="row" style="margin-top:10px;align-items:flex-start">
           <div style="flex:1;min-width:260px">
             <h1 style="margin-bottom:6px">${r.status === 'CREATED' ? '🎉 ' : ''}${data.companyName || 'New vendor'}</h1>
@@ -305,7 +332,8 @@
       try {
         await api(`/api/internal/requests/${id}/bank-verification`, { method: 'POST', body: { numberCalled: $('#bNum').value, numberSource: $('#bSrc').value, personSpokenTo: $('#bWho').value, calledAt: new Date($('#bAt').value).toISOString(), outcome, notes: $('#bNotes').value } })
         toast(outcome === 'CONFIRMED' ? 'Call-back recorded ✅ Review the remaining approval checks.' : 'Call-back recorded. Consider sending it back to the vendor.', 'ok')
-        reload()
+        await reload()
+        $('#bWho')?.scrollIntoView({ block: 'center' })
       } catch (e) { errMsg(e) }
     }
   }

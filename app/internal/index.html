@@ -7,24 +7,35 @@
 <link rel="stylesheet" href="/assets/vob.css">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 </head>
-<body>
+<body class="staff-page">
 <a class="skip-link" href="#app">Skip to content</a>
-<div id="devRibbon"></div>
-<header class="topbar"><div class="wrap">
-  <a class="logo" href="#/"><span class="logo-mark">J</span><span>Vendor Onboarding<small>Jones Engineering</small></span></a>
-  <nav class="nav" id="nav" aria-label="Main navigation">
-    <a href="#/" data-nav="home">Home</a>
-    <a href="#/requests" data-nav="requests">Requests</a>
-    <a href="/how-it-works.html">How it works</a>
-    <a href="#/admin" data-nav="admin" id="navAdmin" hidden>Admin</a>
-    <a href="#/mailbox" data-nav="mailbox" id="navMail" hidden>Test mailbox</a>
-  </nav>
+<header class="topbar staff-topbar"><div class="wrap">
+  <button class="btn btn-line btn-sm staff-menu-toggle" id="staffMenuToggle" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="staffSidebar">☰</button>
+  <a class="logo" href="#/"><span class="logo-mark">J</span><span>Jones Engineering<small>Vendor onboarding</small></span></a>
+  <span class="staff-context" aria-label="Jones Engineering workspace">Jones Engineering <span aria-hidden="true">›</span> <b>Vendor onboarding</b></span>
   <span class="spacer"></span>
-  <button class="btn btn-primary btn-sm" id="inviteBtn" hidden>＋ Invite vendor</button>
-  <button class="btn btn-line btn-sm" id="themeBtn" type="button" aria-label="Switch light or dark mode">🌗</button>
+  <button class="btn btn-primary btn-sm" id="inviteBtn" aria-label="Invite a vendor" hidden>＋ Invite a vendor</button>
+  <button class="btn btn-line btn-sm" id="themeBtn" type="button" aria-label="Switch light or dark mode">◐</button>
   <div style="position:relative" id="who"></div>
 </div></header>
-<main id="app"><div class="wrap" style="padding-top:30px"><div class="skeleton" style="height:140px"></div></div></main>
+<div id="devRibbon"></div>
+<div class="staff-shell">
+  <aside class="staff-sidebar" id="staffSidebar" aria-label="Workspace navigation" inert aria-hidden="true">
+    <div class="staff-side-caption">Workspace</div>
+    <nav class="nav" id="nav" aria-label="Main navigation">
+      <a href="#/" data-nav="home"><span class="staff-nav-icon" aria-hidden="true">⌂</span>Overview</a>
+      <a href="#/requests" data-nav="requests"><span class="staff-nav-icon" aria-hidden="true">▤</span>Requests</a>
+      <a href="#" id="navInvite" hidden><span class="staff-nav-icon" aria-hidden="true">＋</span>Invite a vendor</a>
+      <a href="#/admin" data-nav="admin" id="navAdmin" hidden><span class="staff-nav-icon" aria-hidden="true">⚙</span>Admin</a>
+      <a href="#/mailbox" data-nav="mailbox" id="navMail" hidden><span class="staff-nav-icon" aria-hidden="true">✉</span>Test mailbox</a>
+      <span class="staff-side-caption staff-guide-caption">Guide</span>
+      <a href="/how-it-works.html"><span class="staff-nav-icon" aria-hidden="true">ⓘ</span>How it works</a>
+    </nav>
+    <div class="staff-sidebar-foot"><span class="staff-foot-mark">V</span><span><b>Vendor Experience</b><small>Questions? Contact the VOB team</small></span></div>
+  </aside>
+  <button class="staff-nav-scrim" id="staffNavScrim" type="button" aria-label="Close navigation" hidden></button>
+  <main id="app" class="staff-main"><div class="wrap" style="padding-top:30px"><div class="skeleton" style="height:140px"></div></div></main>
+</div>
 <script src="/assets/validation.js"></script>
 <script src="/assets/ui.js"></script>
 <script src="/assets/approval-routes.js"></script>

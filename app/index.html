@@ -7,32 +7,30 @@
 <link rel="stylesheet" href="/assets/vob.css">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 </head>
-<body>
-<header class="hero" style="padding:28px 0 110px">
-  <div class="wrap">
-    <div class="row" style="margin-bottom:56px"><span class="logo-mark">J</span><b style="font-size:1.1rem">Jones Engineering</b></div>
-    <span class="eyebrow">✨ New · replaces form FIN-010-IE01</span>
-    <h1 style="font-size:clamp(2.2rem,5.5vw,3.6rem);max-width:780px;font-weight:780;letter-spacing:-.04em;background:linear-gradient(90deg,#fff,#c7d2fe 60%,#a5f3fc);-webkit-background-clip:text;background-clip:text;color:transparent">Vendor onboarding, minus the paperwork</h1>
-    <p style="font-size:1.15rem;max-width:620px">The FIN-010 form, reimagined. Vendors fill it in on any device, approvals flow on their own, and SAP creates the vendor automatically.</p>
-  </div>
-</header>
-<main class="wrap">
-  <p><a href="/how-it-works.html" class="btn btn-line">How it works →</a></p>
+<body class="landing-shell">
+<header class="topbar"><div class="wrap">
+  <a class="logo" href="/"><span class="logo-mark">J</span><span>Jones Engineering<small>Vendor onboarding</small></span></a>
+  <span class="spacer"></span><a href="/how-it-works.html" class="btn btn-line btn-sm">How it works →</a>
+</div></header>
+<section class="hero"><div class="wrap">
+  <span class="eyebrow">Secure supplier set-up · replaces FIN-010-IE01</span>
+  <h1>Vendor onboarding,<br>minus the paperwork.</h1>
+  <p class="landing-lede">A clear, guided setup for Jones Engineering suppliers. Vendors complete the form on any device, approvals move through the right people, and the account is created in SAP.</p>
+</div></section>
+<main class="wrap landing-main">
   <div class="grid g2 fade-in">
-    <a class="card pad-lg list-card" href="/internal/" style="display:block">
-      <div class="icon-bubble" style="width:56px;height:56px;font-size:1.7rem;margin-bottom:14px">🏗️</div>
-      <h2>I work at Jones</h2>
-      <p class="muted">Invite a vendor, approve requests and track everything in one place.</p>
-      <span class="btn btn-primary">Open the staff app →</span>
+    <a class="card pad-lg landing-choice" href="/internal/">
+      <div class="icon-bubble" aria-hidden="true">⌂</div><div class="landing-choice-copy"><span class="eyebrow">Jones team</span><h2>I work at Jones</h2>
+      <p class="muted">Invite a supplier, review requests and follow each step from one workspace.</p>
+      <span class="btn btn-primary">Open the staff workspace <span aria-hidden="true">→</span></span></div>
     </a>
-    <div class="card pad-lg">
-      <div class="icon-bubble" style="width:56px;height:56px;font-size:1.7rem;margin-bottom:14px">📨</div>
-      <h2>I'm a vendor</h2>
-      <p class="muted">Use the personal link in the email from Jones Engineering. It opens your secure form straight away. No password needed.</p>
-      <p class="small muted">Can't find the email? Ask your Jones contact to send a new link.</p>
-    </div>
+    <section class="card pad-lg landing-choice vendor-choice">
+      <div class="icon-bubble info" aria-hidden="true">✉</div><div class="landing-choice-copy"><span class="eyebrow">Suppliers</span><h2>I'm a vendor</h2>
+      <p class="muted">Open the personal link in your Jones Engineering invitation email. No password or SAP account is needed.</p>
+      <p class="small muted">Need a new link? Ask your Jones contact to send another invitation.</p></div>
+    </section>
   </div>
-  <p class="center small muted" style="text-align:center;margin:28px 0" id="devnote"></p>
+  <p class="landing-demo small muted" id="devnote"></p>
 </main>
 <script src="/assets/ui.js"></script>
 <script src="/assets/landing.js"></script>
