@@ -9,6 +9,13 @@ test('all screens: responsive layout, keyboard and axe', async ({ page, context 
   await page.goto('/how-it-works.html'); await scan('how-it-works')
   await page.goto('/internal/'); await H.expect(page.locator('[data-p]').first()).toBeVisible(); await scan('personas')
   await H.login(page); await page.reload(); await H.expect(page.locator('.kpi').first()).toBeVisible(); await scan('dashboard')
+  if (info.project.name.startsWith('375-')) {
+    await H.expect(page.locator('#staffSidebar')).toHaveAttribute('inert', '')
+    await page.locator('#themeBtn').focus(); await page.keyboard.press('Tab'); await H.expect(page.locator('#whoBtn')).toBeFocused()
+    await page.locator('#staffMenuToggle').click(); await H.expect(page.locator('#staffSidebar a:not([hidden])').first()).toBeFocused()
+    await page.keyboard.press('Escape'); await H.expect(page.locator('#staffMenuToggle')).toBeFocused()
+    await H.expect(page.locator('#staffSidebar')).toHaveAttribute('aria-hidden', 'true')
+  }
   await page.locator('#inviteBtn').click(); await scan('invite-dialog')
   await page.keyboard.press('Shift+Tab'); await H.expect(page.locator('#iGo')).toBeFocused()
   await page.keyboard.press('Escape'); await H.expect(page.locator('#inviteBtn')).toBeFocused()
