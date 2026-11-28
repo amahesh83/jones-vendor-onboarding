@@ -1,0 +1,34 @@
+{
+  "xsappname": "jones-vob",
+  "tenant-mode": "dedicated",
+  "description": "Jones Vendor Onboarding",
+  "scopes": [
+    { "name": "$XSAPPNAME.VOB_Requester", "description": "Invite vendors and do the requester review" },
+    { "name": "$XSAPPNAME.VOB_PurchasingManager", "description": "Purchasing Manager approval" },
+    { "name": "$XSAPPNAME.VOB_ProcurementApprover", "description": "Procurement approval for 30 days EOM" },
+    { "name": "$XSAPPNAME.VOB_BankVerifier", "description": "Bank details call-back" },
+    { "name": "$XSAPPNAME.VOB_FinancialController", "description": "Finance data, SAP simulation, final approval" },
+    { "name": "$XSAPPNAME.VOB_MasterDataAdmin", "description": "Configuration, SAP error retries" },
+    { "name": "$XSAPPNAME.VOB_Auditor", "description": "Read-only access to everything" }
+  ],
+  "attributes": [],
+  "role-templates": [
+    { "name": "VOB_Requester", "scope-references": ["$XSAPPNAME.VOB_Requester"] },
+    { "name": "VOB_PurchasingManager", "scope-references": ["$XSAPPNAME.VOB_PurchasingManager"] },
+    { "name": "VOB_ProcurementApprover", "scope-references": ["$XSAPPNAME.VOB_ProcurementApprover"] },
+    { "name": "VOB_BankVerifier", "scope-references": ["$XSAPPNAME.VOB_BankVerifier"] },
+    { "name": "VOB_FinancialController", "scope-references": ["$XSAPPNAME.VOB_FinancialController"] },
+    { "name": "VOB_MasterDataAdmin", "scope-references": ["$XSAPPNAME.VOB_MasterDataAdmin"] },
+    { "name": "VOB_Auditor", "scope-references": ["$XSAPPNAME.VOB_Auditor"] }
+  ],
+  "role-collections": [
+    { "name": "VOB_Requester", "role-template-references": ["$XSAPPNAME.VOB_Requester"] },
+    { "name": "VOB_PurchasingManager", "role-template-references": ["$XSAPPNAME.VOB_PurchasingManager"] },
+    { "name": "VOB_ProcurementApprover", "role-template-references": ["$XSAPPNAME.VOB_ProcurementApprover"] },
+    { "name": "VOB_BankVerifier", "role-template-references": ["$XSAPPNAME.VOB_BankVerifier"] },
+    { "name": "VOB_FinancialController", "role-template-references": ["$XSAPPNAME.VOB_FinancialController"] },
+    { "name": "VOB_MasterDataAdmin", "role-template-references": ["$XSAPPNAME.VOB_MasterDataAdmin"] },
+    { "name": "VOB_Auditor", "role-template-references": ["$XSAPPNAME.VOB_Auditor"] }
+  ],
+  "oauth2-configuration": { "redirect-uris": ["https://*.hana.ondemand.com/**", "https://*.applicationstudio.cloud.sap/**"] }
+}

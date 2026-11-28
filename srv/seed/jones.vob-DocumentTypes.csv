@@ -1,0 +1,7 @@
+code;label;help;needsValidUntil;requiredFor;countries;sortOrder
+BANK_LETTER;Bank letter on headed paper;A letter or statement from your bank showing the account name, IBAN and BIC.;false;ALL;;1
+TAX_CLEARANCE;Tax clearance certificate;Your current Revenue eTax clearance certificate.;true;SUB;IE;2
+INSURANCE;Insurance certificate;Your public and employer's liability insurance certificate.;true;SUB;;3
+SAFETY;Safety statement;Your current safety statement.;false;SUB;;4
+SUBCONTRACT;Sub-contract agreement;The signed sub-contract agreement with Jones.;false;SUB;;5
+RCT1;RCT1 form;Only if your Jones contact asks for it. Revenue now uses eRCT.;false;NONE;IE;6

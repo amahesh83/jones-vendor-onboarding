@@ -1,0 +1,6 @@
+role;email;name
+VOB_PurchasingManager;paddy.purchasing@jones.test;Paddy Purchasing
+VOB_ProcurementApprover;priya.procurement@jones.test;Priya Procurement
+VOB_BankVerifier;ben.bank@jones.test;Ben Bankcheck
+VOB_FinancialController;fiona.finance@jones.test;Fiona Finance
+VOB_MasterDataAdmin;adam.admin@jones.test;Adam Admin

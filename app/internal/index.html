@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vendor Onboarding · Jones Engineering</title>
+<link rel="stylesheet" href="/assets/vob.css">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip-link" href="#app">Skip to content</a>
+<div id="devRibbon"></div>
+<header class="topbar"><div class="wrap">
+  <a class="logo" href="#/"><span class="logo-mark">J</span><span>Vendor Onboarding<small>Jones Engineering</small></span></a>
+  <nav class="nav" id="nav" aria-label="Main navigation">
+    <a href="#/" data-nav="home">Home</a>
+    <a href="#/requests" data-nav="requests">Requests</a>
+    <a href="/how-it-works.html">How it works</a>
+    <a href="#/admin" data-nav="admin" id="navAdmin" hidden>Admin</a>
+    <a href="#/mailbox" data-nav="mailbox" id="navMail" hidden>Test mailbox</a>
+  </nav>
+  <span class="spacer"></span>
+  <button class="btn btn-primary btn-sm" id="inviteBtn" hidden>＋ Invite vendor</button>
+  <button class="btn btn-line btn-sm" id="themeBtn" type="button" aria-label="Switch light or dark mode">🌗</button>
+  <div style="position:relative" id="who"></div>
+</div></header>
+<main id="app"><div class="wrap" style="padding-top:30px"><div class="skeleton" style="height:140px"></div></div></main>
+<script src="/assets/validation.js"></script>
+<script src="/assets/ui.js"></script>
+<script src="/assets/approval-routes.js"></script>
+<script src="/internal/internal.js"></script>
+</body>
+</html>

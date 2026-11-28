@@ -66,14 +66,7 @@ This is **Option 6** in the design. **Option 6b (approvals in SAP Build Process 
   - a Microsoft Graph app registration or an SMTP relay for email.
 
   See design §13 Q12–Q14.
-- **Delivery model:**
-  1. Codex builds the whole v1 end to end in one pass, using [`CODEX_BUILD_PROMPT.md`](../../CODEX_BUILD_PROMPT.md).
-  2. Codex tests it and does a final pass.
-  3. Codex hands over with `READY FOR REVIEW`.
-  4. Claude does one review and test pass.
-  5. Claude gives one fix prompt.
-
-  There are no mid-build review cycles.
+- **Delivery model (updated 2026-11-27):** Codex owns the existing implementation, development fixes, independent review, required checks and authorized merge of existing PR #2. The owner explicitly superseded the former one-pass Codex / Claude-review-only arrangement and the later Claude takeover. Continue the existing `build/v1` branch; do not rebuild from scratch. Merge only after independent review and all required checks pass on the exact PR head. This does not authorize production deployment or real SAP/BTP access.
 
 ## Revisit only if
 

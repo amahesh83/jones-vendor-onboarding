@@ -1,0 +1,4 @@
+code;label;sapKey;requiresProcurement;isDefault;sortOrder
+30EOM;30 days end of month;Z030;true;false;1
+60EOM;60 days end of month;Z060;false;true;2
+90EOM;90 days end of month;Z090;false;false;3

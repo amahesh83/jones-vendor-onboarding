@@ -16,9 +16,8 @@ VOB replaces the paper/PDF form **FIN-010-IE01 Vendor Account Set up Form** (H. 
 **Option 6: one SAP CAP application on SAP BTP, approvals in the app.** It was decided by the project owner on 2026-11-09 and is recorded in [`docs/decisions/ADR-001-platform-cap-on-btp.md`](docs/decisions/ADR-001-platform-cap-on-btp.md).
 
 - **Application:** SAP CAP (Node.js, plain JavaScript) on BTP Cloud Foundry, behind a standalone App Router.
-- **Vendor portal:** SAPUI5 freestyle app. Vendors sign in with an invite link plus an email one-time code. Vendors never get SAP or IAS accounts.
-- **Internal app:** SAPUI5 Fiori elements (OData V4). Staff sign in with XSUAA, trusting IAS, trusting Entra ID.
-- **Approvals:** a CAP-native state machine driven by configuration tables.
+- **Vendor portal and staff app:** custom HTML/CSS/JS in `app/`, no UI framework ([ADR-002](docs/decisions/ADR-002-custom-web-ui.md), owner wants a fun, beautiful UI). Vendors sign in with an invite link plus an email one-time code and never get SAP or IAS accounts. Staff sign in with XSUAA, trusting IAS, trusting Entra ID.
+- **Approvals:** a CAP-native state machine driven by configuration tables. [ADR-003](docs/decisions/ADR-003-configurable-approval-routes.md) replaces the fixed chain: first-match configurable routes, requester review on by default, saved submission snapshots, separate bank check by default or explicitly within Finance.
 - **ECC:** reached only through the SAP adapter, then a BTP destination, then the Cloud Connector, then ABAP package `ZVOB` (REST, wrapping `VMD_EI_API`). The ABAP uses 7.50 syntax only (ECC 6.0 EHP8).
 - **Not used:**
   - SAP Build Process Automation or Build Apps (Option 6b is not in v1);
@@ -30,12 +29,14 @@ VOB replaces the paper/PDF form **FIN-010-IE01 Vendor Account Set up Form** (H. 
 - **CPI:** only a possible deployment-time route (the destination points at a pass-through iFlow). Keep the adapter contract in design §9 destination-agnostic and build nothing CPI-specific.
 - **Changing the decision:** do not reopen it on your own. Write any concern in `docs/deviations.md` and carry on. Only a new ADR approved by the project owner can supersede ADR-001.
 
-## Working model (do not change)
+## Working model (owner updated 2026-11-27)
 
-1. **Codex builds the whole v1 end to end in one pass:** build, test, final pass. The brief is [`CODEX_BUILD_PROMPT.md`](CODEX_BUILD_PROMPT.md).
-2. Codex hands over with a final message starting `READY FOR REVIEW`, then stops.
-3. **Claude does one review and test pass**, then gives one Codex fix prompt.
-4. There are no mid-build review cycles, label loops or hand-off brokers.
+1. **Codex owns continuation and completion end to end.** The owner took the work back on 2026-11-27 because Claude Code has no available usage. This supersedes the 2026-11-10 Claude ownership handover.
+2. Continue the existing implementation on `build/v1` and reuse [draft PR #2](https://github.com/amahesh83/jones-vendor-onboarding/pull/2). Do not rebuild from scratch or open a duplicate PR.
+3. The root Codex chat is the project coordinator. Delegated agents may implement or review bounded work, but Codex must inspect their changes and evidence and retain responsibility. Do not claim background monitoring between turns.
+4. The owner authorized Codex to act as developer, independent reviewer and merger. Merge PR #2 only after an independent review finds no blocking issues, required checks pass on the exact head, and the PR is mergeable. This does not authorize production deployment or real SAP/BTP access.
+5. Keep the existing design system and working code. Preserve ADR-001/002/003 and the guardrails below. Distinguish implemented/tested mock behaviour from unverified SAP/BTP integration.
+6. Keep `npm test`, lint and e2e green, push changes to `build/v1`, and report actual results and remaining external dependencies.
 
 ## Sources of truth
 
@@ -44,6 +45,8 @@ VOB replaces the paper/PDF form **FIN-010-IE01 Vendor Account Set up Form** (H. 
 3. [`reference/FIN-010-IE01-Vendor-Account-Setup-Form.pdf`](reference/FIN-010-IE01-Vendor-Account-Setup-Form.pdf): the form being replaced, which is also the PDF template the app fills.
 
 Questions only Jones can answer: use the default in design §13, add the question to `docs/open-questions.md`, and keep going.
+
+The previous Claude handover is retained as historical evidence in [`docs/CLAUDE_CODE_HANDOVER.md`](docs/CLAUDE_CODE_HANDOVER.md); its ownership and unmerged-PR instructions are superseded here.
 
 ## Guardrails
 
@@ -64,5 +67,15 @@ Questions only Jones can answer: use the default in design §13, add the questio
 
 ## Commands
 
-<!-- Codex: fill this section with the real npm scripts once they exist (demo, test, lint, build, e2e). -->
-_Not built yet._
+| Command | Does |
+|---|---|
+| `npm install` | Install pinned dependencies |
+| `npm run demo` | Stable CAP server with in-memory SQLite, mock SAP, test mailbox and 14 demo requests |
+| `npm run watch` | CAP development watch mode |
+| `npm test` | Node test runner: validation, API journeys, queue restart recovery and ABAP archive integrity |
+| `npm run e2e` | Playwright acceptance tests and axe/screenshot checks at 375/1280 px in light/dark |
+| `npm run lint` | ESLint, zero warnings |
+| `npm run lint:abap` | ABAP parser check (not ECC semantic compilation) |
+| `npm run package:abap` | Offline abapGit ZIP under gen/ |
+| `npm run build:cap` | Compile production HANA/service content and stage plain app assets |
+| `npm run build` | `mbt build` for BTP |

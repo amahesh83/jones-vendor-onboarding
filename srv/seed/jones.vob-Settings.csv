@@ -1,0 +1,16 @@
+name;value;description
+inviteExpiryDays;30;Days before an unused or unfinished invite expires
+otpMinutes;10;How long an email code is valid (minutes)
+otpMaxAttempts;5;Wrong codes allowed before the link is locked
+otpLockMinutes;15;Lock time after too many wrong codes (minutes)
+sessionMinutes;120;Vendor session length, sliding (minutes)
+reminderDays;2;Working days before a reminder to the approver pool
+escalationDays;5;Working days before escalation
+bankReminderDays;1;Working days before a bank call-back reminder
+bankEscalationDays;3;Working days before a bank call-back escalation
+senderAddress;noreply@joneseng.com;Sender address for emails (placeholder, open question Q14)
+portalBaseUrl;;Public base URL of the vendor portal. Empty = same host as the app
+supportEmail;accounts.payable@jones.test;Shown to vendors who need help (placeholder)
+retentionMonthsClosed;12;Months before rejected or expired requests are anonymised
+requesterReviewEnabled;true;Requester reviews the vendor before the configured approval route
+privacyNoticeUrl;;HTTPS link to the Jones privacy notice shown in the vendor portal footer. Empty = hidden (open question Q16)

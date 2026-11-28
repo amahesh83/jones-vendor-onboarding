@@ -1,7 +1,11 @@
+> **Current owner — 2026-11-27:** Codex owns continuation, implementation, independent review and authorized merge of existing PR #2. This file remains the acceptance brief; follow [AGENTS.md](AGENTS.md) for current workflow. The 2026-11-10 Claude takeover text below is historical and superseded.
+
+> **ADR-003 supersession (2026-11-10):** Approval routes are configurable and snapshotted at submission. The old fixed-chain references below are superseded by [ADR-003](docs/decisions/ADR-003-configurable-approval-routes.md) and design §6. ADR-002 supersedes UI5/Fiori implementation details. Keep the 13 acceptance scenarios, adapting expected steps to the saved route.
+
 # Codex build prompt: Jones Vendor Onboarding (VOB) v1
 
-> Paste everything inside the fenced block below into Codex, opened on this folder.
-> When Codex reports "READY FOR REVIEW", give Claude Code the review prompt at the bottom of this file.
+> Historical Codex build prompt retained for acceptance requirements. Do not restart the build.
+> Current ownership and continuation instructions are in CLAUDE_CODE_PROMPT.md.
 >
 > **Platform decision: Option 6, CAP on SAP BTP, approvals in the app (2026-11-09).**
 > - Recorded in [docs/decisions/ADR-001-platform-cap-on-btp.md](docs/decisions/ADR-001-platform-cap-on-btp.md).
@@ -253,16 +257,6 @@ Start with the line `READY FOR REVIEW`, then:
 
 ---
 
-## Review prompt for Claude Code (use after Codex says READY FOR REVIEW)
+## Historical Claude Code takeover (superseded 2026-11-27)
 
-```text
-Codex has finished Jones Vendor Onboarding v1 (branch build/v1, draft PR if it pushed one). Review and test it end to end
-against docs/decisions/ADR-001-platform-cap-on-btp.md, docs/01-solution-design.md and CODEX_BUILD_PROMPT.md:
-- run `npm run demo`;
-- walk the vendor and approver journeys in the browser;
-- verify the 13 scenarios;
-- do a security review (vendor auth, SoD, bank data, uploads, public routes);
-- do an ABAP review (7.50 syntax, VMD_EI_API usage, idempotency, authorisations);
-- check ADR-001 conformance (Option 6 only: CAP on BTP, approvals in the app, ECC only via adapter and destination).
-Rank the findings, fix nothing yourself, and end with one ready-to-paste Codex fix prompt.
-```
+The owner returned project ownership to Codex because Claude Code has no available usage. Do not use the former takeover prompt; use the current workflow in [AGENTS.md](AGENTS.md).
